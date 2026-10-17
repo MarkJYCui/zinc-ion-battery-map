@@ -1,0 +1,255 @@
+{
+  "paper_metadata": {
+    "paper_id": "demo_zib_2024",
+    "title": "Polyol-Mediated Solvation Sheath Regulation for Highly Reversible Zinc Metal Anodes",
+    "authors": [
+      "Jian Zhang",
+      "Wei Sun",
+      "Linda Chen"
+    ],
+    "year": 2024,
+    "venue": "Nature Energy",
+    "doi": "10.1038/s41560-024-00000-0",
+    "abstract": "Aqueous zinc batteries are hindered by hydrogen evolution and dendrites. Here, we reveal that 15 mM D-sorbitol effectively modifies the Zn2+ solvation structure, yielding 2500 hours of dendrite-free Zn plating/stripping at 2 mA cm-2.",
+    "open_access_pdf_url": null
+  },
+  "additives": [
+    {
+      "name": "D-Sorbitol",
+      "iupac_name": "(2R,3R,4R,5S)-hexane-1,2,3,4,5,6-hexol",
+      "smiles": "C(C(C(C(C(CO)O)O)O)O)O",
+      "optimal_concentration": {
+        "value": 15.0,
+        "unit": "mM",
+        "raw_text": "15 mM"
+      },
+      "concentration_range_tested": [
+        {
+          "value": 5.0,
+          "unit": "mM",
+          "raw_text": "5 mM"
+        },
+        {
+          "value": 10.0,
+          "unit": "mM",
+          "raw_text": "10 mM"
+        },
+        {
+          "value": 15.0,
+          "unit": "mM",
+          "raw_text": "15 mM"
+        },
+        {
+          "value": 30.0,
+          "unit": "mM",
+          "raw_text": "30 mM"
+        }
+      ],
+      "functional_groups": [
+        "hydroxyl",
+        "polyol"
+      ],
+      "primary_mechanisms": [
+        "Zn2+ solvation sheath modulation",
+        "HER suppression",
+        "Preferred (002) texture deposition",
+        "Dendrite inhibition"
+      ],
+      "mechanism_summary": "Displaces active water from Zn2+ inner solvation sheath and promotes (002) plane texturing.",
+      "battery_context": {
+        "baseline_electrolyte": "2 M ZnSO4",
+        "solvent": "H2O",
+        "electrolyte_pH": 4.0,
+        "anode_material": "Zn foil",
+        "cathode_material": "V2O5",
+        "cell_format": "Symmetric Zn//Zn & Zn//V2O5 full cell",
+        "temperature_celsius": 25.0,
+        "separator_material": null
+      },
+      "performance_metrics": {
+        "symmetric_cell_performance": [
+          {
+            "current_density_mA_cm2": 2.0,
+            "areal_capacity_mAh_cm2": 1.0,
+            "lifespan_hours": 2500.0
+          }
+        ],
+        "coulombic_efficiency_percent": 99.7,
+        "capacity_retention_percent": 92.4,
+        "full_cell_cycle_count": 800,
+        "overpotential_mV": 28.0
+      },
+      "confidence_score": 0.98,
+      "extraction_evidence": "Through systematic concentration screening, we determined that 15 mM D-sorbitol exhibits optimal performance."
+    }
+  ],
+  "candidate_molecules": [
+    {
+      "name": "Glycerol",
+      "smiles": "OCC(O)CO",
+      "similarity_score": 0.42857142857142855,
+      "similarity_metric": "Tanimoto (Morgan R=2)",
+      "molecular_weight": 92.09,
+      "logp": -1.67,
+      "logs": 0.772,
+      "tpsa": 60.69,
+      "hbd": 3,
+      "hba": 3,
+      "rotatable_bonds": 2,
+      "rationale": "Tanimoto similarity of 0.43 to target. Shares structural motifs with 3 H-bond donors and 3 acceptors.",
+      "sdl_formulation_notes": "Aqueous solubility limits optimal for automated liquid handling.",
+      "parent_baseline_electrolyte": "2 M ZnSO4",
+      "electrolyte_compatibility_note": "Validated for sulfate chemistry; verify compatibility before using in other electrolytes; theoretically compatible with Zn(OTf)2 due to neutral non-ionic solvation sheath modulation.",
+      "electrolyte_compatibility_breakdown": {
+        "ZnSO4": {
+          "salt": "ZnSO4",
+          "status": "Validated",
+          "expected_effectiveness": "High",
+          "notes": "Validated for sulfate chemistry; reconstructs Zn2+ solvation sheath by displacing active water, suppresses byproduct basic zinc sulfate (BZS) passivation, and elevates HER overpotential for uniform (002) deposition."
+        },
+        "Zn(OTf)2": {
+          "salt": "Zn(OTf)2",
+          "status": "Highly Compatible",
+          "expected_effectiveness": "High",
+          "notes": "Theoretically compatible with Zn(OTf)2 due to neutral non-ionic solvation sheath modulation; works synergistically with bulky OTf- anions to promote in situ ZnF2-rich SEI while displacing coordinated water."
+        },
+        "Zn(ClO4)2": {
+          "salt": "Zn(ClO4)2",
+          "status": "Highly Compatible",
+          "expected_effectiveness": "High",
+          "notes": "Weakly coordinating ClO4- enables rapid Zn2+ desolvation kinetics; neutral polyols modulate water activity and suppress HER without impeding the ultrafast charge transfer kinetics of perchlorate."
+        },
+        "Zn(TFSI)2": {
+          "salt": "Zn(TFSI)2",
+          "status": "Highly Compatible",
+          "expected_effectiveness": "High",
+          "notes": "In water-in-salt (WiSE) or concentrated Zn(TFSI)2 systems, polyols bind residual free water molecules, expanding the electrochemical stability window (ESW > 2.2 V) and suppressing water splitting."
+        },
+        "ZnCl2": {
+          "salt": "ZnCl2",
+          "status": "Compatible",
+          "expected_effectiveness": "Moderate",
+          "notes": "Concentrated ZnCl2 exhibits rich chlorozinc complex anions ([ZnCl4]2-); polyols intercalate into the complex network to reduce solution viscosity, though high acidity at elevated ZnCl2 concentrations must be monitored."
+        },
+        "Zn(CH3COO)2": {
+          "salt": "Zn(CH3COO)2",
+          "status": "Compatible",
+          "expected_effectiveness": "Moderate",
+          "notes": "Acetate buffers electrolyte pH (~5-6); polyols synergistically regulate Zn2+ nucleation morphology without perturbing the mild acetate buffer equilibrium."
+        }
+      }
+    },
+    {
+      "name": "Ethylene Glycol",
+      "smiles": "OCCO",
+      "similarity_score": 0.23076923076923078,
+      "similarity_metric": "Tanimoto (Morgan R=2)",
+      "molecular_weight": 62.07,
+      "logp": -1.03,
+      "logs": 0.489,
+      "tpsa": 40.46,
+      "hbd": 2,
+      "hba": 2,
+      "rotatable_bonds": 1,
+      "rationale": "Tanimoto similarity of 0.23 to target. Shares structural motifs with 2 H-bond donors and 2 acceptors.",
+      "sdl_formulation_notes": "Aqueous solubility limits optimal for automated liquid handling.",
+      "parent_baseline_electrolyte": "2 M ZnSO4",
+      "electrolyte_compatibility_note": "Validated for sulfate chemistry; verify compatibility before using in other electrolytes; theoretically compatible with Zn(OTf)2 due to neutral non-ionic solvation sheath modulation.",
+      "electrolyte_compatibility_breakdown": {
+        "ZnSO4": {
+          "salt": "ZnSO4",
+          "status": "Validated",
+          "expected_effectiveness": "High",
+          "notes": "Validated for sulfate chemistry; reconstructs Zn2+ solvation sheath by displacing active water, suppresses byproduct basic zinc sulfate (BZS) passivation, and elevates HER overpotential for uniform (002) deposition."
+        },
+        "Zn(OTf)2": {
+          "salt": "Zn(OTf)2",
+          "status": "Highly Compatible",
+          "expected_effectiveness": "High",
+          "notes": "Theoretically compatible with Zn(OTf)2 due to neutral non-ionic solvation sheath modulation; works synergistically with bulky OTf- anions to promote in situ ZnF2-rich SEI while displacing coordinated water."
+        },
+        "Zn(ClO4)2": {
+          "salt": "Zn(ClO4)2",
+          "status": "Highly Compatible",
+          "expected_effectiveness": "High",
+          "notes": "Weakly coordinating ClO4- enables rapid Zn2+ desolvation kinetics; neutral polyols modulate water activity and suppress HER without impeding the ultrafast charge transfer kinetics of perchlorate."
+        },
+        "Zn(TFSI)2": {
+          "salt": "Zn(TFSI)2",
+          "status": "Highly Compatible",
+          "expected_effectiveness": "High",
+          "notes": "In water-in-salt (WiSE) or concentrated Zn(TFSI)2 systems, polyols bind residual free water molecules, expanding the electrochemical stability window (ESW > 2.2 V) and suppressing water splitting."
+        },
+        "ZnCl2": {
+          "salt": "ZnCl2",
+          "status": "Compatible",
+          "expected_effectiveness": "Moderate",
+          "notes": "Concentrated ZnCl2 exhibits rich chlorozinc complex anions ([ZnCl4]2-); polyols intercalate into the complex network to reduce solution viscosity, though high acidity at elevated ZnCl2 concentrations must be monitored."
+        },
+        "Zn(CH3COO)2": {
+          "salt": "Zn(CH3COO)2",
+          "status": "Compatible",
+          "expected_effectiveness": "Moderate",
+          "notes": "Acetate buffers electrolyte pH (~5-6); polyols synergistically regulate Zn2+ nucleation morphology without perturbing the mild acetate buffer equilibrium."
+        }
+      }
+    },
+    {
+      "name": "Ascorbic Acid",
+      "smiles": "C(C(C1C(=C(C(=O)O1)O)O)O)O",
+      "similarity_score": 0.2,
+      "similarity_metric": "Tanimoto (Morgan R=2)",
+      "molecular_weight": 176.12,
+      "logp": -1.41,
+      "logs": 0.087,
+      "tpsa": 107.22,
+      "hbd": 4,
+      "hba": 6,
+      "rotatable_bonds": 2,
+      "rationale": "Tanimoto similarity of 0.20 to target. Shares structural motifs with 4 H-bond donors and 6 acceptors.",
+      "sdl_formulation_notes": "Aqueous solubility limits optimal for automated liquid handling.",
+      "parent_baseline_electrolyte": "2 M ZnSO4",
+      "electrolyte_compatibility_note": "Validated for sulfate chemistry; verify compatibility before using in other electrolytes; theoretically compatible with Zn(OTf)2 due to neutral non-ionic solvation sheath modulation.",
+      "electrolyte_compatibility_breakdown": {
+        "ZnSO4": {
+          "salt": "ZnSO4",
+          "status": "Validated",
+          "expected_effectiveness": "High",
+          "notes": "Validated for sulfate chemistry; reconstructs Zn2+ solvation sheath by displacing active water, suppresses byproduct basic zinc sulfate (BZS) passivation, and elevates HER overpotential for uniform (002) deposition."
+        },
+        "Zn(OTf)2": {
+          "salt": "Zn(OTf)2",
+          "status": "Highly Compatible",
+          "expected_effectiveness": "High",
+          "notes": "Theoretically compatible with Zn(OTf)2 due to neutral non-ionic solvation sheath modulation; works synergistically with bulky OTf- anions to promote in situ ZnF2-rich SEI while displacing coordinated water."
+        },
+        "Zn(ClO4)2": {
+          "salt": "Zn(ClO4)2",
+          "status": "Highly Compatible",
+          "expected_effectiveness": "High",
+          "notes": "Weakly coordinating ClO4- enables rapid Zn2+ desolvation kinetics; neutral polyols modulate water activity and suppress HER without impeding the ultrafast charge transfer kinetics of perchlorate."
+        },
+        "Zn(TFSI)2": {
+          "salt": "Zn(TFSI)2",
+          "status": "Highly Compatible",
+          "expected_effectiveness": "High",
+          "notes": "In water-in-salt (WiSE) or concentrated Zn(TFSI)2 systems, polyols bind residual free water molecules, expanding the electrochemical stability window (ESW > 2.2 V) and suppressing water splitting."
+        },
+        "ZnCl2": {
+          "salt": "ZnCl2",
+          "status": "Compatible",
+          "expected_effectiveness": "Moderate",
+          "notes": "Concentrated ZnCl2 exhibits rich chlorozinc complex anions ([ZnCl4]2-); polyols intercalate into the complex network to reduce solution viscosity, though high acidity at elevated ZnCl2 concentrations must be monitored."
+        },
+        "Zn(CH3COO)2": {
+          "salt": "Zn(CH3COO)2",
+          "status": "Compatible",
+          "expected_effectiveness": "Moderate",
+          "notes": "Acetate buffers electrolyte pH (~5-6); polyols synergistically regulate Zn2+ nucleation morphology without perturbing the mild acetate buffer equilibrium."
+        }
+      }
+    }
+  ],
+  "extraction_summary": "15 mM D-sorbitol in 2 M ZnSO4 restructures Zn2+ solvation, enabling >2500 h symmetric cell life.",
+  "source_type": "text"
+}

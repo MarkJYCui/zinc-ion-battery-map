@@ -1,0 +1,10 @@
+[
+  {
+    "title": "Regulating Solvation Sheaths via Trehalose Additive in High-Reversibility Aqueous Zinc-Ion Batteries",
+    "abstract": "Parasitic side reactions including hydrogen evolution and zinc dendrite proliferation severely shorten the cycle life of aqueous zinc-ion batteries. Here, we demonstrate that trehalose as a multifunctional electrolyte additive reconstructs the inner Zn2+ coordination sphere in 2 M ZnSO4 baseline electrolytes. By replacing active water molecules and elevating the desolvation barrier, 10 mM trehalose achieves >1800 hours of dendrite-free zinc stripping/plating at 1 mA cm-2 and a high Coulombic efficiency of 99.6%."
+  },
+  {
+    "title": "Dynamic Electrostatic Shielding Layer of Tetraethylammonium Additives for Stable Zinc Anodes",
+    "abstract": "Zinc dendrite growth is driven by localized high electric fields at anode protuberances. In this work, tetraethylammonium bromide (TEABr) is investigated as a self-healing additive in 2 M ZnSO4 electrolyte. The quaternary ammonium TEA+ cations form a dynamic electrostatic shield that repels incoming Zn2+ ions away from dendrite tips, steering uniform planar zinc deposition along the (002) crystallographic plane. Symmetrical Zn//Zn cells with 50 mM TEABr deliver a remarkable lifespan of 1650 hours at 2 mA cm-2."
+  }
+]

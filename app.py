@@ -26,7 +26,8 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 
 from rdkit import Chem
-from rdkit.Chem import Descriptors, Draw, AllChem, rdMolDescriptors, Lipinski
+from rdkit.Chem import Descriptors, AllChem, rdMolDescriptors, Lipinski
+
 
 logger = logging.getLogger(__name__)
 

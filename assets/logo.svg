@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 120" width="460" height="120">
+  <defs>
+    <linearGradient id="gradTeal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00A896" />
+      <stop offset="50%" stop-color="#00A896" />
+      <stop offset="100%" stop-color="#02C39A" />
+    </linearGradient>
+    <linearGradient id="boltGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFD166" />
+      <stop offset="100%" stop-color="#F4A261" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Left Icon: Battery Hexagon with Zn2+ & Lightning -->
+  <g transform="translate(10, 10)">
+    <!-- Outer Hex Shield -->
+    <polygon points="50,2 92,25 92,75 50,98 8,75 8,25" class="logo-shield-bg" fill="#18181b" stroke="url(#gradTeal)" stroke-width="3.5" />
+    <!-- Inner Battery Shell -->
+    <rect x="34" y="22" width="32" height="56" rx="5" fill="none" stroke="#02C39A" stroke-width="2.5" opacity="0.9" />
+    <!-- Battery Anode Cap -->
+    <rect x="43" y="16" width="14" height="6" rx="2" fill="#02C39A" />
+    <!-- Electrolyte Fluid Level -->
+    <path d="M36,54 Q42,50 50,54 T64,54 L64,74 Q64,76 62,76 L38,76 Q36,76 36,74 Z" fill="url(#gradTeal)" opacity="0.75" />
+    <!-- Lightning Bolt -->
+    <polygon points="53,28 42,48 50,48 46,68 59,46 51,46" fill="url(#boltGrad)" filter="url(#glow)" />
+    <!-- Zn label dot -->
+    <circle cx="50" cy="87" r="3.5" fill="#02C39A" />
+  </g>
+
+  <!-- Text Section -->
+  <g transform="translate(120, 16)">
+    <!-- Title -->
+    <text x="0" y="36" class="logo-title-zib" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="30" font-weight="800" fill="currentColor" letter-spacing="1.2">
+      ZIB<tspan class="logo-title-map" fill="currentColor">·MAP</tspan>
+    </text>
+    <!-- Subtitle badge -->
+    <rect x="0" y="47" width="228" height="22" rx="5" class="logo-badge-bg" fill="rgba(128, 128, 128, 0.15)" stroke="rgba(128, 128, 128, 0.35)" />
+    <text x="8" y="62" textLength="212" lengthAdjust="spacing" class="logo-badge-txt" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11" font-weight="700" fill="currentColor" letter-spacing="0.4">
+      AUTONOMOUS MATERIALS PLATFORM
+    </text>
+    <text x="0" y="88" class="logo-sub-txt" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12" font-weight="500" fill="currentColor" opacity="0.85">
+      Aqueous Zinc-Ion Battery Discovery
+    </text>
+  </g>
+</svg>
