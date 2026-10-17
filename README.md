@@ -8,7 +8,7 @@
 An interactive research platform designed to help **aqueous zinc-ion battery (ZIB)** researchers screen electrolyte additives from the literature, plan formulation experiments, prepare liquid-handling pipetting schedules, and analyze raw battery cycler data—all in one place.
 
 🌐 **Try the App Online (No Installation Required):**  
-👉 **[Launch on Streamlit Community Cloud](YOUR_STREAMLIT_CLOUD_URL_HERE)** *(Replace with your Streamlit URL after deployment)*
+👉 **[Launch on Streamlit Community Cloud](https://zinc-ion-battery-map-bvpghpfevrln9egmrecfgr.streamlit.app/)
 
 ---
 
