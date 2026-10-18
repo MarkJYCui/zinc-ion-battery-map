@@ -42,27 +42,17 @@ Developing better electrolytes for aqueous zinc-ion batteries—to suppress hydr
 
 This project was built as an attempt to develop a functional software foundation for an **Autonomous Self-Driving Laboratory (SDL)** supporting accelerated materials discovery. In a fully autonomous laboratory, the entire research cycle can operate as a continuous closed loop:
 
-```text
-   ┌───────────────────────────────────────────────────────────────────────┐
-   │  1. Automated Literature Review                                       │
-   │     Build a structured knowledge base of additives & mechanisms       │
-   └───────────────────────────────────┬───────────────────────────────────┘
-                                       ▼
-   ┌───────────────────────────────────────────────────────────────────────┐
-   │  2. Data-Driven Experimental Planning (Design of Experiments)         │◄──┐
-   │     Select concentration ranges & calculate exact pipetting volumes   │   │
-   └───────────────────────────────────┬───────────────────────────────────┘   │
-                                       ▼                                       │
-   ┌───────────────────────────────────────────────────────────────────────┐   │
-   │  3. Automated Robotic Execution & Electrochemical Testing             │   │
-   │     Direct liquid handlers (Opentrons OT-2) & battery cyclers         │   │
-   └───────────────────────────────────┬───────────────────────────────────┘   │
-                                       ▼                                       │
-   ┌───────────────────────────────────────────────────────────────────────┐   │
-   │  4. Automated Data Analysis & Multi-Objective Optimization            │───┘
-   │     Extract cycling metrics & feed new knowledge back to Step 2       │
-   └───────────────────────────────────────────────────────────────────────┘
-```
+```mermaid
+flowchart TD
+    A["<b>1. Automated Literature Review</b><br>Build a structured knowledge base of additives & mechanisms"] --> B
+    B["<b>2. Data-Driven Experimental Planning (DoE)</b><br>Select concentration ranges & calculate exact pipetting volumes"]
+    B --> C
+    C["<b>3. Automated Robotic Execution & Electrochemical Testing</b><br>Direct liquid handlers (Opentrons OT-2) & battery cyclers"]
+    C --> D
+    D["<b>4. Automated Data Analysis & Multi-Objective Optimization</b><br>Extract cycling metrics & feed new knowledge back to Step 2"]
+    
+    %% The feedback loop back to Step 2
+    D --"New Knowledge"--> B
 
 While **Demo Mode (Tab 1)** illustrates how this complete closed-loop workflow operates automatically from start to finish, **Tabs 2, 3, 4, and 5** are designed so that wet-lab researchers can immediately use each step independently in their daily research today.
 
