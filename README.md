@@ -1,7 +1,7 @@
 # Autonomous Materials Acceleration Platform (MAP) for Aqueous Zinc-Ion Batteries
 
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![Streamlit App](https://img.shields.io/badge/Streamlit-Live_Web_App-FF4B4B.svg)](YOUR_STREAMLIT_CLOUD_URL_HERE)
+[![Streamlit App](https://img.shields.io/badge/Streamlit-Live_Web_App-FF4B4B.svg)](https://zinc-ion-battery-map-bvpghpfevrln9egmrecfgr.streamlit.app/)
 [![RDKit](https://img.shields.io/badge/Cheminformatics-RDKit-green.svg)](https://www.rdkit.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
