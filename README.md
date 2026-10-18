@@ -43,7 +43,7 @@ Developing better electrolytes for aqueous zinc-ion batteries—to suppress hydr
 This project was built as an attempt to develop a functional software foundation for an **Autonomous Self-Driving Laboratory (SDL)** supporting accelerated materials discovery. In a fully autonomous laboratory, the entire research cycle can operate as a continuous closed loop:
 
 ```mermaid
-flowchart TD
+flowchart LR
     A["<b>1. Automated Literature Review</b><br>Build a structured knowledge base of additives & mechanisms"] --> B
     B["<b>2. Data-Driven Experimental Planning (DoE)</b><br>Select concentration ranges & calculate exact pipetting volumes"]
     B --> C
