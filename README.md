@@ -53,6 +53,7 @@ flowchart TD
     
     %% The feedback loop back to Step 2
     D --"New Knowledge"--> B
+```
 
 While **Demo Mode (Tab 1)** illustrates how this complete closed-loop workflow operates automatically from start to finish, **Tabs 2, 3, 4, and 5** are designed so that wet-lab researchers can immediately use each step independently in their daily research today.
 
