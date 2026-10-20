@@ -1385,7 +1385,7 @@ def render_two_tier_card_deck(
             elif st.session_state.get("_lang_changed_this_run"):
                 st.session_state["step2_tier1_additive_dropdown"] = st.session_state["step2_tier1_additive_dropdown"]
 
-            col_t1_sel, col_t1_edit, col_t1_up = st.columns([3.4, 0.8, 0.8], vertical_alignment="bottom")
+            col_t1_sel, col_t1_edit, col_t1_up = st.columns([3.1, 0.95, 0.95], vertical_alignment="bottom")
             with col_t1_sel:
                 t1_choice = st.selectbox(
                     tr("select_tier1_dropdown_label"),

@@ -434,26 +434,24 @@ with st.sidebar:
         matching_additive = next((a for a in all_additives if a["name"] == selected_additive_name), all_additives[0])
         selected_smiles = matching_additive["smiles"]
 
-        col_s1, col_s2 = st.columns(2)
-        with col_s1:
-            default_conc = float(st.session_state.get("published_conc_input", 15.0))
-            published_conc_input = st.number_input(
-                tr("reported_conc"),
-                min_value=0.5,
-                max_value=1000.0,
-                value=default_conc,
-                step=1.0,
-                help=tr("reported_conc_help"),
-            )
-            st.session_state["published_conc_input"] = published_conc_input
-        with col_s2:
-            default_parent = str(st.session_state.get("parent_electrolyte_input", "2 M ZnSO₄"))
-            parent_electrolyte_input = st.text_input(
-                tr("baseline_electrolyte"),
-                value=default_parent,
-                help=tr("baseline_electrolyte_help"),
-            )
-            st.session_state["parent_electrolyte_input"] = parent_electrolyte_input
+        default_conc = float(st.session_state.get("published_conc_input", 15.0))
+        published_conc_input = st.number_input(
+            tr("reported_conc"),
+            min_value=0.5,
+            max_value=1000.0,
+            value=default_conc,
+            step=1.0,
+            help=tr("reported_conc_help"),
+        )
+        st.session_state["published_conc_input"] = published_conc_input
+
+        default_parent = str(st.session_state.get("parent_electrolyte_input", "2 M ZnSO₄"))
+        parent_electrolyte_input = st.text_input(
+            tr("baseline_electrolyte"),
+            value=default_parent,
+            help=tr("baseline_electrolyte_help"),
+        )
+        st.session_state["parent_electrolyte_input"] = parent_electrolyte_input
 
         st.markdown(f"##### **{tr('opt_header')}**")
         closed_loop_iterations = st.slider(
@@ -1021,13 +1019,30 @@ if is_demo and tab_run is not None:
                         hoverinfo="skip",
                     ))
 
+                y_min_val = float(df_cells["Mean Overpot (mV)"].min()) if not df_cells.empty else 0.0
+                y_max_val = float(df_cells["Mean Overpot (mV)"].max()) if not df_cells.empty else 100.0
+                y_span = max(10.0, y_max_val - y_min_val)
+                y_range_pareto = [max(0.0, y_min_val - 0.12 * y_span), y_max_val + 0.18 * y_span]
+
                 fig_pareto.update_layout(
-                    title=tr("pareto_chart_title"),
-                    xaxis_title=tr("pareto_x_axis"),
-                    yaxis_title=tr("pareto_y_axis"),
+                    title=dict(
+                        text=f"<b>{tr('pareto_chart_title')}</b>",
+                        x=0.5,
+                        xanchor="center",
+                        font=dict(size=14),
+                    ),
+                    xaxis=dict(title=tr("pareto_x_axis"), automargin=True),
+                    yaxis=dict(title=tr("pareto_y_axis"), range=y_range_pareto, automargin=True),
                     template="plotly_white",
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                    margin=dict(l=20, r=20, t=50, b=20),
+                    legend=dict(
+                        orientation="h",
+                        yanchor="top",
+                        y=-0.22,
+                        xanchor="center",
+                        x=0.5,
+                    ),
+                    height=460,
+                    margin=dict(l=55, r=30, t=55, b=85),
                 )
                 st.plotly_chart(fig_pareto, use_container_width=True)
 
@@ -2973,6 +2988,10 @@ with tab_step2:
                             "Vial": c.vial_id,
                         })
                     pts_df = pd.DataFrame(pts)
+                    doe_title_text = (
+                        f"<b>DoE Multi-Round Formulation Space</b>"
+                        f"<br><sup>{anchor.additive_name} in {target_elyte_clean} ({len(pts_df)} Formulations Evaluated)</sup>"
+                    )
                     fig_doe = px.scatter(
                         pts_df,
                         x=f"{anchor.additive_name} Conc (mM)",
@@ -2985,23 +3004,27 @@ with tab_step2:
                         },
                         text="Sample ID",
                         hover_data=["Vial", f"{anchor.additive_name} Conc (mM)", f"{format_chem_formula(anchor.target_electrolyte_salt)} Salt Conc (M)", "Point Type"],
-                        title=f"DoE Multi-Round Formulation Space: {anchor.additive_name} in {target_elyte_clean} ({len(pts_df)} Formulations Evaluated)",
                     )
                 else:
                     pts_df = pd.DataFrame([
                         {"Sample ID": f.sample_id, f"{anchor.additive_name} Conc (mM)": f.additive_conc_mM, f"{format_chem_formula(anchor.target_electrolyte_salt)} Salt Conc (M)": f.salt_conc_M}
                         for f in plan.formulations
                     ])
+                    doe_title_text = (
+                        f"<b>{plan.method.upper()} Formulation Matrix</b>"
+                        f"<br><sup>{anchor.additive_name} in {target_elyte_clean} ({len(pts_df)} Points)</sup>"
+                    )
                     fig_doe = px.scatter(
                         pts_df,
                         x=f"{anchor.additive_name} Conc (mM)",
                         y=f"{format_chem_formula(anchor.target_electrolyte_salt)} Salt Conc (M)",
                         text="Sample ID",
                         hover_data=[f"{anchor.additive_name} Conc (mM)", f"{format_chem_formula(anchor.target_electrolyte_salt)} Salt Conc (M)"],
-                        title=f"{plan.method.upper()} Formulation Matrix: {anchor.additive_name} in {target_elyte_clean} ({len(pts_df)} Points)",
                     )
 
-                # Add Anchor Point Marker
+                fig_doe.update_traces(textposition="bottom center")
+
+                # Add Anchor Point Marker (kept at top center so it does not collide with sample labels below)
                 fig_doe.add_trace(go.Scatter(
                     x=[anchor.shifted_anchor_conc],
                     y=[CANONICAL_ELECTROLYTE_PROFILES[selected_target_salt]["default_molarity"]],
@@ -3019,13 +3042,34 @@ with tab_step2:
                         line_width=2,
                         line_dash="dash",
                         line_color="#e63946",
-                        annotation_text=f"ESOL 80% Safety Cap ({anchor.solubility_ceiling_mM:.1f} mM)",
+                        annotation_text=f"ESOL 80% Cap ({anchor.solubility_ceiling_mM:.1f} mM)",
                         annotation_position="top left",
                         annotation_font_color="#e63946",
                     )
 
-                fig_doe.update_traces(textposition="bottom center")
-                fig_doe.update_layout(template="plotly_white", margin=dict(l=20, r=20, t=40, b=20), height=465)
+                fig_doe.update_layout(
+                    title=dict(
+                        text=doe_title_text,
+                        x=0.5,
+                        xanchor="center",
+                        y=0.95,
+                        yanchor="top",
+                        font=dict(size=14),
+                    ),
+                    xaxis=dict(automargin=True),
+                    yaxis=dict(automargin=True),
+                    legend=dict(
+                        orientation="h",
+                        yanchor="top",
+                        y=-0.22,
+                        xanchor="center",
+                        x=0.5,
+                        title_text="",
+                    ),
+                    template="plotly_white",
+                    margin=dict(l=55, r=25, t=68, b=85),
+                    height=465,
+                )
                 st.plotly_chart(fig_doe, use_container_width=True)
 
         if is_demo:
@@ -3115,13 +3159,14 @@ with tab_step2:
                 text_vals.append(t_row)
                 custom_vals.append(c_row)
 
+            heatmap_font_size = 13 if len(grid_cols) <= 6 else 10
             fig_heatmap = go.Figure(data=go.Heatmap(
                 z=z_vals,
                 x=[f"Col {c}" for c in grid_cols],
                 y=grid_rows,
                 text=text_vals,
                 texttemplate="%{text}",
-                textfont={"size": 14, "family": "system-ui, -apple-system, sans-serif"},
+                textfont={"size": heatmap_font_size, "family": "system-ui, -apple-system, sans-serif"},
                 colorscale="Tealgrn",
                 hoverongaps=False,
                 customdata=custom_vals,
@@ -3141,20 +3186,24 @@ with tab_step2:
             ))
             fig_heatmap.update_layout(
                 title=dict(
-                    text=f"<b>OT-2 Deck Coordinate Layout ({schedule.rack_format} — Slot {schedule.ot2_deck_slot}) — Multi-Round Continuity</b>",
-                    font=dict(size=15),
+                    text=f"<b>OT-2 Deck Coordinate Layout ({schedule.rack_format} — Slot {schedule.ot2_deck_slot})</b><br><sup>Multi-Round Continuity</sup>",
+                    x=0.5,
+                    xanchor="center",
+                    font=dict(size=14),
                 ),
                 yaxis=dict(
                     autorange="reversed",
-                    tickfont=dict(size=13),
+                    tickfont=dict(size=12),
                     title=dict(text="Row", font=dict(size=13)),
+                    automargin=True,
                 ),
                 xaxis=dict(
-                    tickfont=dict(size=13),
+                    tickfont=dict(size=12),
                     title=dict(text="Column", font=dict(size=13)),
+                    automargin=True,
                 ),
-                height=390 if len(grid_rows) == 4 else 520,
-                margin=dict(l=30, r=20, t=50, b=30),
+                height=400 if len(grid_rows) == 4 else 540,
+                margin=dict(l=45, r=25, t=65, b=40),
             )
             st.plotly_chart(fig_heatmap, use_container_width=True)
 
@@ -3464,24 +3513,25 @@ with tab_step3:
     div[data-testid="stColumn"]:has(.step3-technique-col) div[data-baseweb="select"],
     div[data-testid="stColumn"]:has(.step3-technique-col) div[data-baseweb="select"] > div {
         min-height: 42px !important;
-        height: 42px !important;
-        max-height: 42px !important;
+        height: auto !important;
+        max-height: none !important;
         box-sizing: border-box !important;
         display: flex !important;
         align-items: center !important;
         border-radius: 8px !important;
-        font-size: 0.98rem !important;
+        font-size: 0.95rem !important;
     }
 
     .st-key-step3_technique_selector div[data-baseweb="select"] > div > div,
     div[data-testid="stColumn"]:has(.step3-technique-col) div[data-baseweb="select"] > div > div {
         display: flex !important;
         align-items: center !important;
+        flex-wrap: wrap !important;
     }
     </style>
     """, unsafe_allow_html=True)
 
-    col_u1, col_u2 = st.columns([2.2, 1.2], vertical_alignment="top")
+    col_u1, col_u2 = st.columns([2.0, 1.4], vertical_alignment="top")
     with col_u1:
         uploaded_cycler_file = st.file_uploader(
             tr("upload_cycler_label"),
@@ -3707,19 +3757,36 @@ with tab_step3:
                     line_width=2,
                     line_dash="dash",
                     line_color="#d62728",
-                    annotation_text=f"Failure: {t_fail:.1f} h ({format_failure_mode(symm.failure_mode)})",
-                    annotation_position="top left",
-                    annotation_font_color="#d62728",
+                )
+                fig_v.add_annotation(
+                    x=0.5,
+                    xref="paper",
+                    y=1.03,
+                    yref="paper",
+                    xanchor="center",
+                    yanchor="bottom",
+                    text=f"Failure: {t_fail:.1f} h ({format_failure_mode(symm.failure_mode)})",
+                    showarrow=False,
+                    bgcolor="rgba(255, 235, 235, 0.96)",
+                    bordercolor="#d62728",
+                    borderwidth=1,
+                    borderpad=3,
+                    font=dict(color="#d62728", size=11),
                 )
 
             fig_v.update_layout(
-                title=f"{tr('chart_voltage_title')} ({active_report.file_source})",
-                xaxis_title="Time (hours)",
-                yaxis_title=tr("chart_voltage_y"),
-                xaxis=dict(range=x_range, rangeslider=dict(visible=True)),
+                title=dict(
+                    text=f"{tr('chart_voltage_title')} ({active_report.file_source})",
+                    x=0.5,
+                    xanchor="center",
+                    y=0.96 if t_fail else 0.95,
+                    yanchor="top",
+                ),
+                xaxis=dict(title="Time (hours)", range=x_range, rangeslider=dict(visible=True), automargin=True),
+                yaxis=dict(title=tr("chart_voltage_y"), automargin=True),
                 template="plotly_white",
-                height=380,
-                margin=dict(l=20, r=20, t=40, b=20),
+                height=410,
+                margin=dict(l=55, r=25, t=82 if t_fail else 50, b=60),
             )
             st.plotly_chart(
                 fig_v,
@@ -3754,12 +3821,13 @@ with tab_step3:
                         annotation_position="top left",
                     )
                 fig_cyc.update_layout(
-                    title=tr("chart_overpotential_title"),
-                    xaxis_title="Cycle Number",
-                    yaxis_title=tr("chart_overpotential_y"),
+                    title=dict(text=tr("chart_overpotential_title"), x=0.5, xanchor="center"),
+                    xaxis=dict(title="Cycle Number", automargin=True),
+                    yaxis=dict(title=tr("chart_overpotential_y"), automargin=True),
+                    legend=dict(orientation="h", yanchor="top", y=-0.24, xanchor="center", x=0.5),
                     template="plotly_white",
-                    height=320,
-                    margin=dict(l=20, r=20, t=40, b=20),
+                    height=360,
+                    margin=dict(l=55, r=25, t=55, b=80),
                 )
                 st.plotly_chart(
                     fig_cyc,
@@ -3796,13 +3864,12 @@ with tab_step3:
                 line=dict(color="#1f77b4", width=1.5),
             ))
             fig_v.update_layout(
-                title=f"{tr('chart_voltage_title')} ({active_report.file_source})",
-                xaxis_title=f"Time ({d.time_unit})",
-                yaxis_title=tr("chart_voltage_y"),
+                title=dict(text=f"{tr('chart_voltage_title')} ({active_report.file_source})", x=0.5, xanchor="center"),
+                xaxis=dict(title=f"Time ({d.time_unit})", rangeslider=dict(visible=True), automargin=True),
+                yaxis=dict(title=tr("chart_voltage_y"), automargin=True),
                 template="plotly_white",
-                height=380,
-                margin=dict(l=20, r=20, t=40, b=20),
-                xaxis=dict(rangeslider=dict(visible=True)),
+                height=400,
+                margin=dict(l=55, r=25, t=55, b=60),
             )
             st.plotly_chart(
                 fig_v,
@@ -3821,12 +3888,12 @@ with tab_step3:
                     line=dict(color="#2ca02c", width=2),
                 ))
                 fig_as.update_layout(
-                    title="Coulombic Efficiency vs Cycle Number",
-                    xaxis_title="Cycle Number",
-                    yaxis_title="Coulombic Efficiency (%)",
+                    title=dict(text="Coulombic Efficiency vs Cycle Number", x=0.5, xanchor="center"),
+                    xaxis=dict(title="Cycle Number", automargin=True),
+                    yaxis=dict(title="Coulombic Efficiency (%)", automargin=True),
                     template="plotly_white",
-                    height=320,
-                    margin=dict(l=20, r=20, t=40, b=20),
+                    height=340,
+                    margin=dict(l=55, r=25, t=55, b=60),
                 )
                 st.plotly_chart(
                     fig_as,
@@ -3869,13 +3936,12 @@ with tab_step3:
                     line=dict(color="#1f77b4", width=1.5),
                 ))
                 fig_v.update_layout(
-                    title=f"Full Cell Galvanostatic Voltage vs Time ({active_report.file_source})",
-                    xaxis_title=f"Time ({d.time_unit})",
-                    yaxis_title="Cell Voltage (V)",
+                    title=dict(text=f"Full Cell Galvanostatic Voltage vs Time ({active_report.file_source})", x=0.5, xanchor="center"),
+                    xaxis=dict(title=f"Time ({d.time_unit})", rangeslider=dict(visible=True), automargin=True),
+                    yaxis=dict(title="Cell Voltage (V)", automargin=True),
                     template="plotly_white",
-                    height=380,
-                    margin=dict(l=20, r=20, t=40, b=20),
-                    xaxis=dict(rangeslider=dict(visible=True)),
+                    height=400,
+                    margin=dict(l=55, r=25, t=55, b=60),
                 )
                 st.plotly_chart(
                     fig_v,
@@ -3910,14 +3976,15 @@ with tab_step3:
                 y2_max = min(150.0, max(105.0, max_ce + 5.0))
 
                 fig_fc.update_layout(
-                    title=f"{tr('fc_chart_title')} ({active_report.file_source})",
-                    xaxis=dict(title=tr("fc_xaxis_cycle"), showgrid=True),
+                    title=dict(text=f"{tr('fc_chart_title')} ({active_report.file_source})", x=0.5, xanchor="center"),
+                    xaxis=dict(title=tr("fc_xaxis_cycle"), showgrid=True, automargin=True),
                     yaxis=dict(
                         title=tr("fc_yaxis_cap"),
                         title_font=dict(color="#1f77b4"),
                         tickfont=dict(color="#1f77b4"),
                         side="left",
                         showgrid=True,
+                        automargin=True,
                     ),
                     yaxis2=dict(
                         title=tr("fc_yaxis_ce"),
@@ -3927,12 +3994,13 @@ with tab_step3:
                         side="right",
                         showgrid=False,
                         range=[y2_min, y2_max],
+                        automargin=True,
                     ),
                     hovermode="x unified",
-                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                    legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
                     template="plotly_white",
-                    height=420,
-                    margin=dict(l=20, r=20, t=50, b=20),
+                    height=440,
+                    margin=dict(l=55, r=60, t=55, b=80),
                 )
                 st.plotly_chart(
                     fig_fc,
@@ -4055,12 +4123,13 @@ with tab_step3:
                 )
 
             fig_cv.update_layout(
-                title=f"{tr('chart_cv_title')} ({active_report.file_source})",
-                xaxis_title=tr("chart_cv_x"),
-                yaxis_title=tr("chart_cv_y"),
+                title=dict(text=f"{tr('chart_cv_title')} ({active_report.file_source})", x=0.5, xanchor="center"),
+                xaxis=dict(title=tr("chart_cv_x"), automargin=True),
+                yaxis=dict(title=tr("chart_cv_y"), automargin=True),
+                legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
                 template="plotly_white",
-                height=420,
-                margin=dict(l=20, r=20, t=40, b=20),
+                height=440,
+                margin=dict(l=55, r=25, t=55, b=80),
             )
             st.plotly_chart(
                 fig_cv,
@@ -4132,12 +4201,12 @@ with tab_step3:
                         annotation_position="bottom right",
                     )
                 fig_lsv.update_layout(
-                    title=tr("chart_lsv_title"),
-                    xaxis_title=tr("chart_cv_x"),
-                    yaxis_title=tr("chart_lsv_y"),
+                    title=dict(text=tr("chart_lsv_title"), x=0.5, xanchor="center"),
+                    xaxis=dict(title=tr("chart_cv_x"), automargin=True),
+                    yaxis=dict(title=tr("chart_lsv_y"), automargin=True),
                     template="plotly_white",
-                    height=380,
-                    margin=dict(l=20, r=20, t=40, b=20),
+                    height=390,
+                    margin=dict(l=55, r=25, t=55, b=60),
                 )
                 st.plotly_chart(
                     fig_lsv,
@@ -4167,12 +4236,12 @@ with tab_step3:
                         annotation_position="top left",
                     )
                 fig_tafel.update_layout(
-                    title=tr("chart_tafel_title"),
-                    xaxis_title=tr("chart_cv_x"),
-                    yaxis_title=tr("chart_tafel_y"),
+                    title=dict(text=tr("chart_tafel_title"), x=0.5, xanchor="center"),
+                    xaxis=dict(title=tr("chart_cv_x"), automargin=True),
+                    yaxis=dict(title=tr("chart_tafel_y"), automargin=True),
                     template="plotly_white",
-                    height=380,
-                    margin=dict(l=20, r=20, t=40, b=20),
+                    height=390,
+                    margin=dict(l=55, r=25, t=55, b=60),
                 )
                 st.plotly_chart(
                     fig_tafel,
@@ -4256,16 +4325,17 @@ with tab_step3:
                 )
 
             fig_nyquist.update_layout(
-                title=f"{tr('chart_nyquist_title')} ({active_report.file_source})",
-                xaxis_title=tr("chart_nyquist_x"),
+                title=dict(text=f"{tr('chart_nyquist_title')} ({active_report.file_source})", x=0.5, xanchor="center"),
+                xaxis=dict(title=tr("chart_nyquist_x"), automargin=True),
                 yaxis=dict(
                     title=tr("chart_nyquist_y"),
                     scaleanchor="x",
                     scaleratio=1,
+                    automargin=True,
                 ),
                 template="plotly_white",
                 height=480,
-                margin=dict(l=20, r=20, t=40, b=20),
+                margin=dict(l=55, r=25, t=55, b=60),
             )
             st.plotly_chart(
                 fig_nyquist,
@@ -4297,13 +4367,12 @@ with tab_step3:
                 line=dict(color="#1f77b4", width=1.5),
             ))
             fig_gen.update_layout(
-                title=f"Electrochemical Potential vs Time ({active_report.file_source})",
-                xaxis_title=f"Time ({d.time_unit})",
-                yaxis_title="Cell Potential vs Zn/Zn²⁺ (V)",
+                title=dict(text=f"Electrochemical Potential vs Time ({active_report.file_source})", x=0.5, xanchor="center"),
+                xaxis=dict(title=f"Time ({d.time_unit})", rangeslider=dict(visible=True), automargin=True),
+                yaxis=dict(title="Cell Potential vs Zn/Zn²⁺ (V)", automargin=True),
                 template="plotly_white",
-                height=380,
-                margin=dict(l=20, r=20, t=40, b=20),
-                xaxis=dict(rangeslider=dict(visible=True)),
+                height=400,
+                margin=dict(l=55, r=25, t=55, b=60),
             )
             st.plotly_chart(
                 fig_gen,
@@ -4321,12 +4390,12 @@ with tab_step3:
                     line=dict(color="#ff7f0e", width=1.5),
                 ))
                 fig_i.update_layout(
-                    title=f"Applied Current vs Time ({active_report.file_source})",
-                    xaxis_title=f"Time ({d.time_unit})",
-                    yaxis_title="Current (mA)",
+                    title=dict(text=f"Applied Current vs Time ({active_report.file_source})", x=0.5, xanchor="center"),
+                    xaxis=dict(title=f"Time ({d.time_unit})", automargin=True),
+                    yaxis=dict(title="Current (mA)", automargin=True),
                     template="plotly_white",
-                    height=280,
-                    margin=dict(l=20, r=20, t=40, b=20),
+                    height=300,
+                    margin=dict(l=55, r=25, t=55, b=60),
                 )
                 st.plotly_chart(
                     fig_i,

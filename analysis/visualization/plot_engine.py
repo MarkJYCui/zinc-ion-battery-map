@@ -130,6 +130,7 @@ class ElectrochemicalPlotEngine:
         xaxis_vt: Dict[str, Any] = {
             "title": f"Time ({t_unit})",
             "rangeslider": {"visible": True},
+            "automargin": True,
         }
 
         shapes: List[Dict[str, Any]] = []
@@ -159,7 +160,7 @@ class ElectrochemicalPlotEngine:
                 "line": {"color": "#d62728", "width": 2, "dash": "dash"},
             })
 
-            # Diagnostic annotation tag
+            # Diagnostic annotation tag placed above the plot canvas so it never overlaps voltage traces
             diag_text = (
                 symm.total_test_summary.get("diagnostic_message")
                 if symm.total_test_summary and isinstance(symm.total_test_summary, dict)
@@ -172,20 +173,19 @@ class ElectrochemicalPlotEngine:
                 else:
                     diag_text = f"Failure Detected at {t_fail:.1f} h (Cycle {cyc}) - Mode: {symm.failure_mode}"
 
-            is_right_side = t_window_max > 0 and (t_fail > 0.5 * t_window_max)
             annotations.append({
-                "x": t_fail,
-                "y": 0.92,
+                "x": 0.5,
+                "xref": "paper",
+                "y": 1.03,
                 "yref": "paper",
-                "xanchor": "right" if is_right_side else "left",
+                "xanchor": "center",
+                "yanchor": "bottom",
                 "text": diag_text,
-                "showarrow": True,
-                "arrowhead": 2,
-                "arrowcolor": "#d62728",
-                "ax": -20 if is_right_side else 20,
-                "ay": 0,
-                "bgcolor": "rgba(255, 235, 235, 0.95)",
+                "showarrow": False,
+                "bgcolor": "rgba(255, 235, 235, 0.96)",
                 "bordercolor": "#d62728",
+                "borderwidth": 1,
+                "borderpad": 4,
                 "font": {"color": "#d62728", "size": 11},
             })
         else:
@@ -206,11 +206,13 @@ class ElectrochemicalPlotEngine:
                 "text": f"Galvanostatic Voltage Profile ({curr_dens:.2f} mA/cm²)",
                 "x": 0.5,
                 "xanchor": "center",
+                "y": 0.96 if annotations else 0.95,
+                "yanchor": "top",
             },
             "xaxis": xaxis_vt,
-            "yaxis": {"title": "Cell Potential vs Zn/Zn²⁺ (V)"},
+            "yaxis": {"title": "Cell Potential vs Zn/Zn²⁺ (V)", "automargin": True},
             "template": "plotly_white",
-            "margin": {"t": 60, "b": 40, "l": 65, "r": 30},
+            "margin": {"t": 92 if annotations else 60, "b": 65, "l": 65, "r": 30},
         }
         if shapes:
             layout_vt["shapes"] = shapes
@@ -228,9 +230,21 @@ class ElectrochemicalPlotEngine:
                 "div_id": "plot_overpot",
                 "data": [trace_overpot, trace_hyst],
                 "layout": {
-                    "title": "Zinc Stripping/Plating Overpotential & Hysteresis Evolution",
-                    "xaxis": {"title": "Cycle Number"},
-                    "yaxis": {"title": "Overpotential / Hysteresis (mV)"},
+                    "title": {
+                        "text": "Zinc Stripping/Plating Overpotential & Hysteresis Evolution",
+                        "x": 0.5,
+                        "xanchor": "center",
+                    },
+                    "xaxis": {"title": "Cycle Number", "automargin": True},
+                    "yaxis": {"title": "Overpotential / Hysteresis (mV)", "automargin": True},
+                    "legend": {
+                        "orientation": "h",
+                        "yanchor": "top",
+                        "y": -0.22,
+                        "xanchor": "center",
+                        "x": 0.5,
+                    },
+                    "margin": {"t": 55, "b": 80, "l": 65, "r": 30},
                     "template": "plotly_white",
                 },
             },
@@ -289,9 +303,14 @@ class ElectrochemicalPlotEngine:
                 "div_id": "plot_ce",
                 "data": [trace_ce],
                 "layout": {
-                    "title": "Coulombic Efficiency (CE) Retention across Plating/Stripping Cycles",
-                    "xaxis": {"title": "Cycle Number"},
-                    "yaxis": {"title": "Coulombic Efficiency (%)", "range": [0, 105]},
+                    "title": {
+                        "text": "Coulombic Efficiency (CE) Retention across Plating/Stripping Cycles",
+                        "x": 0.5,
+                        "xanchor": "center",
+                    },
+                    "xaxis": {"title": "Cycle Number", "automargin": True},
+                    "yaxis": {"title": "Coulombic Efficiency (%)", "range": [0, 105], "automargin": True},
+                    "margin": {"t": 55, "b": 60, "l": 65, "r": 30},
                     "template": "plotly_white",
                 },
             },
@@ -299,9 +318,14 @@ class ElectrochemicalPlotEngine:
                 "div_id": "plot_nuc",
                 "data": [trace_nuc],
                 "layout": {
-                    "title": "Zinc Nucleation Overpotential Evolution",
-                    "xaxis": {"title": "Cycle Number"},
-                    "yaxis": {"title": "Nucleation Overpotential (mV)"},
+                    "title": {
+                        "text": "Zinc Nucleation Overpotential Evolution",
+                        "x": 0.5,
+                        "xanchor": "center",
+                    },
+                    "xaxis": {"title": "Cycle Number", "automargin": True},
+                    "yaxis": {"title": "Nucleation Overpotential (mV)", "automargin": True},
+                    "margin": {"t": 55, "b": 60, "l": 65, "r": 30},
                     "template": "plotly_white",
                 },
             },
@@ -309,9 +333,14 @@ class ElectrochemicalPlotEngine:
                 "div_id": "plot_vt",
                 "data": [trace_v],
                 "layout": {
-                    "title": "Asymmetric Cell Plating/Stripping Profiles",
-                    "xaxis": {"title": f"Time ({d.time_unit})"},
-                    "yaxis": {"title": "Potential vs Zn/Zn²⁺ (V)"},
+                    "title": {
+                        "text": "Asymmetric Cell Plating/Stripping Profiles",
+                        "x": 0.5,
+                        "xanchor": "center",
+                    },
+                    "xaxis": {"title": f"Time ({d.time_unit})", "automargin": True},
+                    "yaxis": {"title": "Potential vs Zn/Zn²⁺ (V)", "automargin": True},
+                    "margin": {"t": 55, "b": 60, "l": 65, "r": 30},
                     "template": "plotly_white",
                 },
             },
@@ -365,18 +394,24 @@ class ElectrochemicalPlotEngine:
                 "div_id": "plot_cap",
                 "data": [trace_cap, trace_ce],
                 "layout": {
-                    "title": "Full Cell Specific Capacity & Coulombic Efficiency vs Cycle",
-                    "xaxis": {"title": "Cycle Number", "showgrid": True},
-                    "yaxis": {"title": "Specific Capacity (mAh/g)", "side": "left", "showgrid": True},
+                    "title": {
+                        "text": "Full Cell Specific Capacity & Coulombic Efficiency vs Cycle",
+                        "x": 0.5,
+                        "xanchor": "center",
+                    },
+                    "xaxis": {"title": "Cycle Number", "showgrid": True, "automargin": True},
+                    "yaxis": {"title": "Specific Capacity (mAh/g)", "side": "left", "showgrid": True, "automargin": True},
                     "yaxis2": {
                         "title": "Coulombic Efficiency (%)",
                         "overlaying": "y",
                         "side": "right",
                         "showgrid": False,
                         "range": [y2_min, y2_max],
+                        "automargin": True,
                     },
                     "hovermode": "x unified",
-                    "legend": {"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+                    "legend": {"orientation": "h", "yanchor": "top", "y": -0.22, "xanchor": "center", "x": 0.5},
+                    "margin": {"t": 60, "b": 80, "l": 65, "r": 65},
                     "template": "plotly_white",
                 },
             },
@@ -396,9 +431,14 @@ class ElectrochemicalPlotEngine:
                 "div_id": "plot_vt",
                 "data": [trace_v],
                 "layout": {
-                    "title": "Full Cell Galvanostatic Voltage Curve",
-                    "xaxis": {"title": f"Time ({d.time_unit})"},
-                    "yaxis": {"title": "Cell Voltage (V)"},
+                    "title": {
+                        "text": "Full Cell Galvanostatic Voltage Curve",
+                        "x": 0.5,
+                        "xanchor": "center",
+                    },
+                    "xaxis": {"title": f"Time ({d.time_unit})", "automargin": True},
+                    "yaxis": {"title": "Cell Voltage (V)", "automargin": True},
+                    "margin": {"t": 55, "b": 60, "l": 65, "r": 30},
                     "template": "plotly_white",
                 },
             })
@@ -447,9 +487,14 @@ class ElectrochemicalPlotEngine:
                 "div_id": "plot_lsv",
                 "data": [trace_j],
                 "layout": {
-                    "title": "Linear Sweep Voltammetry (LSV) Polarization Curve",
-                    "xaxis": {"title": "Potential vs Zn/Zn²⁺ (V)"},
-                    "yaxis": {"title": "Current Density j (mA/cm²)"},
+                    "title": {
+                        "text": "Linear Sweep Voltammetry (LSV) Polarization Curve",
+                        "x": 0.5,
+                        "xanchor": "center",
+                    },
+                    "xaxis": {"title": "Potential vs Zn/Zn²⁺ (V)", "automargin": True},
+                    "yaxis": {"title": "Current Density j (mA/cm²)", "automargin": True},
+                    "margin": {"t": 55, "b": 60, "l": 65, "r": 30},
                     "template": "plotly_white",
                 },
             },
@@ -457,9 +502,14 @@ class ElectrochemicalPlotEngine:
                 "div_id": "plot_tafel",
                 "data": [trace_tafel],
                 "layout": {
-                    "title": "Tafel Kinetics Plot (log₁₀ |j| vs Potential)",
-                    "xaxis": {"title": "Potential vs Zn/Zn²⁺ (V)"},
-                    "yaxis": {"title": "log₁₀ |j| (mA/cm²)"},
+                    "title": {
+                        "text": "Tafel Kinetics Plot (log₁₀ |j| vs Potential)",
+                        "x": 0.5,
+                        "xanchor": "center",
+                    },
+                    "xaxis": {"title": "Potential vs Zn/Zn²⁺ (V)", "automargin": True},
+                    "yaxis": {"title": "log₁₀ |j| (mA/cm²)", "automargin": True},
+                    "margin": {"t": 55, "b": 60, "l": 65, "r": 30},
                     "template": "plotly_white",
                 },
             },
@@ -496,9 +546,14 @@ class ElectrochemicalPlotEngine:
         }
 
         layout_nyquist = {
-            "title": "Nyquist Impedance Spectrum",
-            "xaxis": {"title": "Z' (Ω)"},
-            "yaxis": {"title": "-Z'' (Ω)", "scaleanchor": "x", "scaleratio": 1},
+            "title": {
+                "text": "Nyquist Impedance Spectrum",
+                "x": 0.5,
+                "xanchor": "center",
+            },
+            "xaxis": {"title": "Z' (Ω)", "automargin": True},
+            "yaxis": {"title": "-Z'' (Ω)", "scaleanchor": "x", "scaleratio": 1, "automargin": True},
+            "margin": {"t": 55, "b": 60, "l": 65, "r": 30},
             "template": "plotly_white",
         }
         if not zr or not zi:
@@ -574,9 +629,21 @@ class ElectrochemicalPlotEngine:
                 "div_id": "plot_cv",
                 "data": traces,
                 "layout": {
-                    "title": "Zinc Cyclic Voltammetry (CV) Curve",
-                    "xaxis": {"title": "Potential vs Zn/Zn²⁺ (V)"},
-                    "yaxis": {"title": "Current (mA)"},
+                    "title": {
+                        "text": "Zinc Cyclic Voltammetry (CV) Curve",
+                        "x": 0.5,
+                        "xanchor": "center",
+                    },
+                    "xaxis": {"title": "Potential vs Zn/Zn²⁺ (V)", "automargin": True},
+                    "yaxis": {"title": "Current (mA)", "automargin": True},
+                    "legend": {
+                        "orientation": "h",
+                        "yanchor": "top",
+                        "y": -0.22,
+                        "xanchor": "center",
+                        "x": 0.5,
+                    },
+                    "margin": {"t": 55, "b": 80, "l": 65, "r": 30},
                     "template": "plotly_white",
                 },
             }
@@ -645,12 +712,13 @@ class ElectrochemicalPlotEngine:
                 annotation_position="top right",
             )
         fig.update_layout(
-            title=f"Cyclic Voltammogram ({report.file_source})",
-            xaxis_title="Cell Potential vs Zn/Zn²⁺ (V)",
-            yaxis_title="Current (mA)",
+            title=dict(text=f"Cyclic Voltammogram ({report.file_source})", x=0.5, xanchor="center"),
+            xaxis=dict(title="Cell Potential vs Zn/Zn²⁺ (V)", automargin=True),
+            yaxis=dict(title="Current (mA)", automargin=True),
+            legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
             template="plotly_white",
-            height=420,
-            margin=dict(l=20, r=20, t=40, b=20),
+            height=440,
+            margin=dict(l=55, r=25, t=55, b=80),
         )
         return fig
 
@@ -700,12 +768,12 @@ class ElectrochemicalPlotEngine:
                 annotation_position="bottom right",
             )
         fig_lsv.update_layout(
-            title="LSV Polarization Curve (j vs V)",
-            xaxis_title="Potential vs Zn/Zn²⁺ (V)",
-            yaxis_title="Current Density j (mA/cm²)",
+            title=dict(text="LSV Polarization Curve (j vs V)", x=0.5, xanchor="center"),
+            xaxis=dict(title="Potential vs Zn/Zn²⁺ (V)", automargin=True),
+            yaxis=dict(title="Current Density j (mA/cm²)", automargin=True),
             template="plotly_white",
-            height=380,
-            margin=dict(l=20, r=20, t=40, b=20),
+            height=400,
+            margin=dict(l=55, r=25, t=55, b=60),
         )
 
         # 2. Tafel slope plot (log10|j| vs V)
@@ -730,12 +798,12 @@ class ElectrochemicalPlotEngine:
                 annotation_position="top left",
             )
         fig_tafel.update_layout(
-            title="Tafel Slope Kinetics (log₁₀|j| vs V)",
-            xaxis_title="Potential vs Zn/Zn²⁺ (V)",
-            yaxis_title="log₁₀ |j| (mA/cm²)",
+            title=dict(text="Tafel Slope Kinetics (log₁₀|j| vs V)", x=0.5, xanchor="center"),
+            xaxis=dict(title="Potential vs Zn/Zn²⁺ (V)", automargin=True),
+            yaxis=dict(title="log₁₀ |j| (mA/cm²)", automargin=True),
             template="plotly_white",
-            height=380,
-            margin=dict(l=20, r=20, t=40, b=20),
+            height=400,
+            margin=dict(l=55, r=25, t=55, b=60),
         )
 
         return fig_lsv, fig_tafel
@@ -802,16 +870,17 @@ class ElectrochemicalPlotEngine:
             )
 
         fig.update_layout(
-            title=f"Nyquist Impedance Spectrum ({report.file_source})",
-            xaxis_title="Z' (Ω)",
+            title=dict(text=f"Nyquist Impedance Spectrum ({report.file_source})", x=0.5, xanchor="center"),
+            xaxis=dict(title="Z' (Ω)", automargin=True),
             yaxis=dict(
                 title="-Z'' (Ω)",
                 scaleanchor="x",
                 scaleratio=1,
+                automargin=True,
             ),
             template="plotly_white",
             height=480,
-            margin=dict(l=20, r=20, t=40, b=20),
+            margin=dict(l=55, r=25, t=55, b=60),
         )
         return fig
 
@@ -841,12 +910,12 @@ class ElectrochemicalPlotEngine:
         ))
         y_label = "dQ/dV (mAh/(V·cm²))" if d.areal_capacity_mah_cm2 else "dQ/dV (mAh/V)"
         fig.update_layout(
-            title=f"Differential Capacity Analysis dQ/dV ({report.file_source})",
-            xaxis_title="Cell Potential vs Zn/Zn²⁺ (V)",
-            yaxis_title=y_label,
+            title=dict(text=f"Differential Capacity Analysis dQ/dV ({report.file_source})", x=0.5, xanchor="center"),
+            xaxis=dict(title="Cell Potential vs Zn/Zn²⁺ (V)", automargin=True),
+            yaxis=dict(title=y_label, automargin=True),
             template="plotly_white",
-            height=380,
-            margin=dict(l=20, r=20, t=40, b=20),
+            height=400,
+            margin=dict(l=55, r=25, t=55, b=60),
         )
         return fig
 

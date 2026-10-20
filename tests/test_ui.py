@@ -4933,3 +4933,61 @@ def test_ui_summary_tab_removed_in_custom_mode_and_demo_first_figure_no_text_ove
     assert "Full Test" in html_content
     assert "Initial 24h" in html_content
 
+
+def test_ui_macbook_dark_mode_dropdowns_sidebar_and_plotly_layouts():
+    """
+    Verify fixes for MacBook (13-inch and 16-inch) and desktop UI compatibility:
+    1. Dark mode CSS enforces #ffffff text under [data-theme="dark"] and scopes
+       @media (prefers-color-scheme: light) strictly to [data-theme="light"].
+    2. BaseWeb select & virtual dropdown rules allow multi-line wrapping and auto height.
+    3. Sidebar 'Reported Additive Conc (mM)' and 'Literature Baseline Electrolyte' are stacked
+       vertically rather than squeezed into a 2-column sidebar row.
+    4. Plotly charts (Pareto, DoE, HTML Live Preview) use non-overlapping bottom legends,
+       wrapped titles, and above-canvas failure diagnostic annotations.
+    """
+    import inspect
+    from ui.styles import CUSTOM_CSS, inject_global_styles
+    from analysis.visualization.plot_engine import ElectrochemicalPlotEngine
+
+    # 1. Dark Mode CSS & macOS color parser verification
+    assert '[data-theme="dark"] p,' in CUSTOM_CSS
+    assert '[data-theme="dark"] [data-testid="stCaptionContainer"] *' in CUSTOM_CSS
+    assert '[data-theme="dark"] [data-testid="stMetricValue"] *' in CUSTOM_CSS
+    assert '[data-theme="dark"] label[data-testid="stWidgetLabel"] *' in CUSTOM_CSS
+    assert "color: #ffffff !important;" in CUSTOM_CSS
+
+    light_media_block = CUSTOM_CSS.split("@media (prefers-color-scheme: light)")[1].split("/* Dark Mode High-Contrast Enforcement")[0]
+    assert '[data-theme="light"]' in light_media_block
+    assert "\n        .stApp p," not in light_media_block
+
+    js_source = inspect.getsource(inject_global_styles)
+    assert "parseColorToRgb" in js_source
+    assert "stAppViewContainer" in js_source
+
+    # 2. Dropdown wrapping & virtual dropdown rules
+    assert 'ul[data-testid="stSelectboxVirtualDropdown"]' in CUSTOM_CSS
+    assert "overflow-wrap: anywhere !important;" in CUSTOM_CSS
+
+    # 3. Sidebar vertical stacking & Plotly chart layouts in Demo Mode
+    at = AppTest.from_file(APP_PATH, default_timeout=35.0)
+    at.run()
+    assert len(at.exception) == 0
+
+    at.sidebar.radio[0].set_value("demo").run()
+    assert len(at.exception) == 0
+
+    app_src = Path(APP_PATH).read_text(encoding="utf-8")
+    assert "col_s1, col_s2 = st.columns(2)" not in app_src
+    assert "<b>DoE Multi-Round Formulation Space</b>" in app_src
+    assert "<br><sup>{anchor.additive_name} in {target_elyte_clean}" in app_src
+
+    # Verify HTML Live Preview symmetric dashboard has non-overlapping annotation & bottom legend
+    campaign = at.session_state["campaign_result"]
+    assert campaign is not None and campaign.best_candidate is not None
+    engine = ElectrochemicalPlotEngine(output_dir="./reports")
+    html_content = engine._render_symmetric_dashboard(campaign.best_candidate.analysis_report)
+    assert '"y": 1.03' in html_content
+    assert '"showarrow": false' in html_content.lower()
+    assert '"y": -0.22' in html_content
+
+

@@ -32,7 +32,7 @@ You do not need any programming experience to use this platform. Everything runs
 * **Tab 5 — Summary Report & Export (Step 4):**  
   Review the complete experimental audit trail, compare tested formulations side by side, and download structured summary reports in **Word (`.docx`)**, **Excel (`.xlsx`)**, **Plain Text (`.txt`)**, or **Interactive HTML** formats for group meetings and manuscript preparation.
 
-*(Note: The interface also supports switching between **English** and **Simplified Chinese** in the sidebar.)*
+*(Note: The interface also supports switching between **English**, **French**, and **Simplified Chinese** in the sidebar.)*
 
 ---
 

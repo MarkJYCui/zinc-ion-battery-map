@@ -23,13 +23,8 @@ CUSTOM_CSS = """
         --app-text: #ffffff;
         color: #ffffff !important;
     }
-
-    @media (prefers-color-scheme: dark) {
-        [data-theme="dark"] {
-            --text-color: #ffffff;
-            --app-text: #ffffff;
-            color: #ffffff !important;
-        }
+    [data-theme="dark"] .sidebar-section-title {
+        color: #ffffff !important;
     }
 
     /* Universal High-Contrast Inheritance: eliminate Streamlit's default 60% grey caption & label dimming */
@@ -49,7 +44,8 @@ CUSTOM_CSS = """
     .stApp [data-testid="stFileUploaderDropzoneInstructions"] *,
     .stApp [data-testid="stFileUploaderDropzone"] small,
     .stApp [data-testid="stFileUploaderDropzone"] span,
-    .stApp [data-baseweb="tab"]:not([aria-selected="true"]) * {
+    .stApp [data-baseweb="tab"]:not([aria-selected="true"]) *,
+    .stApp .tech-file-banner .banner-text {
         color: inherit !important;
         opacity: 1 !important;
     }
@@ -80,15 +76,30 @@ CUSTOM_CSS = """
     [data-theme="light"] .tech-file-banner .banner-text,
     [data-theme="light"] .tech-file-banner .banner-sep,
     [data-theme="light"] .tech-file-banner .banner-code,
+    [data-theme="light"] .hero-card-title,
     [data-theme="light"] .hero-card-subtitle,
     [data-theme="light"] .hero-stat-label,
     [data-theme="light"] .hero-stat-sub,
     [data-theme="light"] .hero-sub,
+    [data-theme="light"] .paper-card-title,
     [data-theme="light"] .paper-card-meta,
     [data-theme="light"] .paper-abstract-box,
+    [data-theme="light"] .paper-analysis-box,
     [data-theme="light"] .callout-box *,
+    [data-theme="light"] .stage1-title,
+    [data-theme="light"] .stage2-title,
     [data-theme="light"] .stage-desc,
     [data-theme="light"] .section-title,
+    [data-theme="light"] .sidebar-link-card,
+    [data-theme="light"] .sidebar-credits-box,
+    [data-theme="light"] .sidebar-credits-box *,
+    [data-theme="light"] .tech-pill,
+    [data-theme="light"] div[data-baseweb="select"] span,
+    [data-theme="light"] div[data-baseweb="select"] div,
+    [data-theme="light"] div[data-baseweb="input"] input,
+    [data-theme="light"] div[data-baseweb="base-input"] input,
+    [data-theme="light"] div[data-baseweb="popover"] li[role="option"],
+    [data-theme="light"] div[data-baseweb="popover"] li[role="option"] *,
     [data-theme="light"] table,
     [data-theme="light"] th,
     [data-theme="light"] td {
@@ -97,46 +108,110 @@ CUSTOM_CSS = """
     }
 
     @media (prefers-color-scheme: light) {
-        .stApp p,
-        .stApp span:not(.badge-tag):not([style*="color"]),
-        .stApp label,
-        .stApp li,
-        .stApp small,
-        .stApp [data-testid="stCaptionContainer"],
-        .stApp [data-testid="stCaptionContainer"] *,
-        .stApp [data-testid="stMetricLabel"],
-        .stApp [data-testid="stMetricLabel"] *,
-        .stApp [data-testid="stMetricValue"],
-        .stApp [data-testid="stMetricValue"] *,
-        .stApp label[data-testid="stWidgetLabel"],
-        .stApp label[data-testid="stWidgetLabel"] *,
-        .stApp [data-testid="stMarkdownContainer"] p,
-        .stApp [data-testid="stMarkdownContainer"] span:not(.badge-tag):not([style*="color"]),
-        .stApp [data-testid="stExpander"] summary,
-        .stApp [data-testid="stExpander"] summary *,
-        .stApp [data-testid="stFileUploaderDropzoneInstructions"] *,
-        .stApp [data-testid="stFileUploaderDropzone"] small,
-        .stApp [data-testid="stFileUploaderDropzone"] span,
-        .stApp [data-baseweb="tab"]:not([aria-selected="true"]) *,
-        .stApp .tech-file-banner,
-        .stApp .tech-file-banner .banner-text,
-        .stApp .tech-file-banner .banner-sep,
-        .stApp .tech-file-banner .banner-code,
-        .stApp .hero-card-subtitle,
-        .stApp .hero-stat-label,
-        .stApp .hero-stat-sub,
-        .stApp .hero-sub,
-        .stApp .paper-card-meta,
-        .stApp .paper-abstract-box,
-        .stApp .callout-box *,
-        .stApp .stage-desc,
-        .stApp .section-title,
-        .stApp table,
-        .stApp th,
-        .stApp td {
+        [data-theme="light"].stApp p,
+        [data-theme="light"] .stApp p,
+        [data-theme="light"].stApp span:not(.badge-tag):not([style*="color"]),
+        [data-theme="light"] .stApp span:not(.badge-tag):not([style*="color"]),
+        [data-theme="light"].stApp label,
+        [data-theme="light"] .stApp label,
+        [data-theme="light"].stApp li,
+        [data-theme="light"] .stApp li,
+        [data-theme="light"].stApp small,
+        [data-theme="light"] .stApp small,
+        [data-theme="light"] .stApp [data-testid="stCaptionContainer"],
+        [data-theme="light"] .stApp [data-testid="stCaptionContainer"] *,
+        [data-theme="light"] .stApp [data-testid="stMetricLabel"],
+        [data-theme="light"] .stApp [data-testid="stMetricLabel"] *,
+        [data-theme="light"] .stApp [data-testid="stMetricValue"],
+        [data-theme="light"] .stApp [data-testid="stMetricValue"] *,
+        [data-theme="light"] .stApp label[data-testid="stWidgetLabel"],
+        [data-theme="light"] .stApp label[data-testid="stWidgetLabel"] *,
+        [data-theme="light"] .stApp [data-testid="stMarkdownContainer"] p,
+        [data-theme="light"] .stApp [data-testid="stMarkdownContainer"] span:not(.badge-tag):not([style*="color"]),
+        [data-theme="light"] .stApp [data-testid="stExpander"] summary,
+        [data-theme="light"] .stApp [data-testid="stExpander"] summary *,
+        [data-theme="light"] .stApp [data-testid="stFileUploaderDropzoneInstructions"] *,
+        [data-theme="light"] .stApp [data-testid="stFileUploaderDropzone"] small,
+        [data-theme="light"] .stApp [data-testid="stFileUploaderDropzone"] span,
+        [data-theme="light"] .stApp [data-baseweb="tab"]:not([aria-selected="true"]) *,
+        [data-theme="light"] .stApp .tech-file-banner,
+        [data-theme="light"] .stApp .tech-file-banner .banner-text,
+        [data-theme="light"] .stApp .tech-file-banner .banner-sep,
+        [data-theme="light"] .stApp .tech-file-banner .banner-code,
+        [data-theme="light"] .stApp .hero-card-subtitle,
+        [data-theme="light"] .stApp .hero-stat-label,
+        [data-theme="light"] .stApp .hero-stat-sub,
+        [data-theme="light"] .stApp .hero-sub,
+        [data-theme="light"] .stApp .paper-card-meta,
+        [data-theme="light"] .stApp .paper-abstract-box,
+        [data-theme="light"] .stApp .callout-box *,
+        [data-theme="light"] .stApp .stage-desc,
+        [data-theme="light"] .stApp .section-title,
+        [data-theme="light"] .stApp table,
+        [data-theme="light"] .stApp th,
+        [data-theme="light"] .stApp td {
             color: #000000 !important;
             opacity: 1 !important;
         }
+    }
+
+    /* Dark Mode High-Contrast Enforcement: ensure crisp white text on macOS & desktop */
+    [data-theme="dark"] p,
+    [data-theme="dark"] span:not(.badge-tag):not([style*="color"]),
+    [data-theme="dark"] label,
+    [data-theme="dark"] li,
+    [data-theme="dark"] small,
+    [data-theme="dark"] [data-testid="stCaptionContainer"],
+    [data-theme="dark"] [data-testid="stCaptionContainer"] *,
+    [data-theme="dark"] [data-testid="stMetricLabel"],
+    [data-theme="dark"] [data-testid="stMetricLabel"] *,
+    [data-theme="dark"] [data-testid="stMetricValue"],
+    [data-theme="dark"] [data-testid="stMetricValue"] *,
+    [data-theme="dark"] label[data-testid="stWidgetLabel"],
+    [data-theme="dark"] label[data-testid="stWidgetLabel"] *,
+    [data-theme="dark"] [data-testid="stMarkdownContainer"] p,
+    [data-theme="dark"] [data-testid="stMarkdownContainer"] li,
+    [data-theme="dark"] [data-testid="stMarkdownContainer"] span:not(.badge-tag):not([style*="color"]),
+    [data-theme="dark"] [data-testid="stExpander"] summary,
+    [data-theme="dark"] [data-testid="stExpander"] summary *,
+    [data-theme="dark"] [data-testid="stFileUploaderDropzoneInstructions"] *,
+    [data-theme="dark"] [data-testid="stFileUploaderDropzone"] small,
+    [data-theme="dark"] [data-testid="stFileUploaderDropzone"] span,
+    [data-theme="dark"] [data-baseweb="tab"]:not([aria-selected="true"]) *,
+    [data-theme="dark"] .hero-card-title,
+    [data-theme="dark"] .hero-card-subtitle,
+    [data-theme="dark"] .hero-stat-label,
+    [data-theme="dark"] .hero-stat-sub,
+    [data-theme="dark"] .hero-sub,
+    [data-theme="dark"] .paper-card-title,
+    [data-theme="dark"] .paper-card-meta,
+    [data-theme="dark"] .paper-abstract-box,
+    [data-theme="dark"] .paper-analysis-box,
+    [data-theme="dark"] .callout-box,
+    [data-theme="dark"] .callout-box *,
+    [data-theme="dark"] .stage1-card,
+    [data-theme="dark"] .stage2-card,
+    [data-theme="dark"] .stage1-title,
+    [data-theme="dark"] .stage2-title,
+    [data-theme="dark"] .stage-desc,
+    [data-theme="dark"] .section-title,
+    [data-theme="dark"] .sidebar-section-title,
+    [data-theme="dark"] .sidebar-link-card,
+    [data-theme="dark"] .sidebar-credits-box,
+    [data-theme="dark"] .sidebar-credits-box *,
+    [data-theme="dark"] .tech-pill,
+    [data-theme="dark"] .lit-search-label,
+    [data-theme="dark"] div[data-baseweb="select"] span,
+    [data-theme="dark"] div[data-baseweb="select"] div,
+    [data-theme="dark"] div[data-baseweb="input"] input,
+    [data-theme="dark"] div[data-baseweb="base-input"] input,
+    [data-theme="dark"] div[data-baseweb="popover"] li[role="option"],
+    [data-theme="dark"] div[data-baseweb="popover"] li[role="option"] *,
+    [data-theme="dark"] table,
+    [data-theme="dark"] th,
+    [data-theme="dark"] td {
+        color: #ffffff !important;
+        opacity: 1 !important;
     }
 
     /* -------------------------------------------------------------------------
@@ -178,6 +253,11 @@ CUSTOM_CSS = """
     }
 
     @media (prefers-color-scheme: dark) {
+        [data-theme="dark"] {
+            --text-color: #ffffff;
+            --app-text: #ffffff;
+            color: #ffffff !important;
+        }
         [data-theme="dark"] .tech-file-banner {
             background: rgba(2, 132, 199, 0.16) !important;
             border-color: rgba(56, 189, 248, 0.35) !important;
@@ -222,8 +302,7 @@ CUSTOM_CSS = """
     /* Step 3 Cycler File Uploader Compact 42px Layout */
     .st-key-uploader_step3_cycler_file [data-testid="stFileUploaderDropzone"] {
         min-height: 42px !important;
-        height: 42px !important;
-        max-height: 42px !important;
+        height: auto !important;
         padding: 4px 12px !important;
         box-sizing: border-box !important;
         display: flex !important;
@@ -251,13 +330,22 @@ CUSTOM_CSS = """
         text-overflow: ellipsis !important;
     }
 
-    /* BaseWeb Select & Popover: Full Text Visibility without Ellipsis */
+    /* BaseWeb Select & Popover: Full Text Visibility without Ellipsis on Small & Large Screens */
     div[data-baseweb="select"] {
         width: 100% !important;
     }
     div[data-baseweb="select"] > div {
         min-height: 38px !important;
         height: auto !important;
+        max-height: none !important;
+        padding-top: 3px !important;
+        padding-bottom: 3px !important;
+    }
+    div[data-baseweb="select"] > div > div {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
+        flex-wrap: wrap !important;
     }
     div[data-baseweb="select"] span,
     div[data-baseweb="select"] div {
@@ -265,28 +353,43 @@ CUSTOM_CSS = """
         text-overflow: clip !important;
         overflow: visible !important;
         word-break: break-word !important;
+        overflow-wrap: anywhere !important;
         line-height: 1.35 !important;
     }
     div[data-baseweb="popover"] {
         max-width: 95vw !important;
-        width: auto !important;
-        min-width: 100% !important;
+        width: max-content !important;
+        min-width: 240px !important;
     }
-    div[data-baseweb="popover"] ul[role="listbox"] {
+    div[data-baseweb="popover"] > div,
+    div[data-baseweb="popover"] [data-baseweb="menu"],
+    div[data-baseweb="popover"] ul[role="listbox"],
+    ul[data-testid="stSelectboxVirtualDropdown"] {
         max-height: 360px !important;
+        max-width: min(92vw, 540px) !important;
+        width: 100% !important;
     }
-    div[data-baseweb="popover"] li[role="option"] {
+    div[data-baseweb="popover"] li[role="option"],
+    ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] {
         white-space: normal !important;
         word-break: break-word !important;
+        overflow-wrap: anywhere !important;
         height: auto !important;
         min-height: 38px !important;
         padding-top: 8px !important;
         padding-bottom: 8px !important;
         line-height: 1.35 !important;
+        align-items: flex-start !important;
     }
-    div[data-baseweb="popover"] li[role="option"] > div {
+    div[data-baseweb="popover"] li[role="option"] > div,
+    div[data-baseweb="popover"] li[role="option"] *,
+    ul[data-testid="stSelectboxVirtualDropdown"] li[role="option"] * {
         white-space: normal !important;
         word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+        text-overflow: clip !important;
+        overflow: visible !important;
+        line-height: 1.35 !important;
     }
 
     /* Universal Adaptive Metric Card styling */
@@ -648,9 +751,9 @@ CUSTOM_CSS = """
     .st-key-lit_search_sort_select div[data-baseweb="select"] > div,
     .st-key-lit_search_limit_select div[data-baseweb="select"],
     .st-key-lit_search_limit_select div[data-baseweb="select"] > div {
-        height: 48px !important;
         min-height: 48px !important;
-        max-height: 48px !important;
+        height: auto !important;
+        max-height: none !important;
         display: flex !important;
         align-items: center !important;
         box-sizing: border-box !important;
@@ -669,7 +772,7 @@ CUSTOM_CSS = """
     div[data-testid="stColumn"]:has(.st-key-lit_search_submit_btn) {
         min-width: 0 !important;
     }
-    /* Step 1 Online Search: Label row perfect horizontal alignment */
+    /* Step 1 Online Search: Label row horizontal alignment with small-screen wrapping support */
     .st-key-lit_search_label_row {
         margin-bottom: -10px !important;
     }
@@ -678,27 +781,27 @@ CUSTOM_CSS = """
         display: flex !important;
         flex-direction: column !important;
         justify-content: center !important;
-        height: 24px !important;
         min-height: 24px !important;
-        max-height: 24px !important;
+        height: auto !important;
     }
     .st-key-lit_search_label_row .lit-search-label {
-        font-size: 0.88rem !important;
+        font-size: 0.86rem !important;
         font-weight: 600 !important;
-        line-height: 24px !important;
-        height: 24px !important;
+        line-height: 1.25 !important;
+        min-height: 24px !important;
+        height: auto !important;
         display: flex !important;
         align-items: center !important;
         margin: 0 !important;
         padding: 0 !important;
-        white-space: nowrap !important;
+        white-space: normal !important;
+        overflow-wrap: break-word !important;
     }
     .st-key-lit_search_label_row .st-key-lit_search_append_checkbox,
     .st-key-lit_search_label_row .st-key-lit_search_append_checkbox div[data-testid="stCheckbox"],
     .st-key-lit_search_label_row div[data-testid="stCheckbox"] {
         min-height: 24px !important;
-        height: 24px !important;
-        max-height: 24px !important;
+        height: auto !important;
         margin: 0 !important;
         padding: 0 !important;
         display: flex !important;
@@ -707,21 +810,21 @@ CUSTOM_CSS = """
     .st-key-lit_search_label_row .st-key-lit_search_append_checkbox label,
     .st-key-lit_search_label_row .st-key-lit_search_append_checkbox label[data-testid="stWidgetLabel"] {
         min-height: 24px !important;
-        height: 24px !important;
-        max-height: 24px !important;
+        height: auto !important;
         margin: 0 !important;
         padding: 0 !important;
         display: inline-flex !important;
         align-items: center !important;
         gap: 6px !important;
-        white-space: nowrap !important;
+        white-space: normal !important;
     }
     .st-key-lit_search_label_row .st-key-lit_search_append_checkbox label div[data-testid="stMarkdownContainer"],
     .st-key-lit_search_label_row .st-key-lit_search_append_checkbox label p {
-        font-size: 0.88rem !important;
+        font-size: 0.86rem !important;
         font-weight: 600 !important;
-        line-height: 24px !important;
-        height: 24px !important;
+        line-height: 1.25 !important;
+        min-height: 24px !important;
+        height: auto !important;
         margin: 0 !important;
         padding: 0 !important;
         display: inline-flex !important;
@@ -757,11 +860,11 @@ CUSTOM_CSS = """
         padding: 0 !important;
     }
 
-    /* Step 2 Candidate Card Deck: Equal 165px Height and Button Alignment */
+    /* Step 2 Candidate Card Deck: Responsive Height and Button Alignment */
     .candidate-card-deck-box {
-        height: 165px !important;
         min-height: 165px !important;
-        max-height: 165px !important;
+        height: auto !important;
+        max-height: 215px !important;
         overflow-y: auto !important;
         display: flex !important;
         flex-direction: column !important;
@@ -795,38 +898,119 @@ def inject_global_styles() -> None:
         (function() {
             try {
                 const parentDoc = window.parent.document;
+                const parentWin = window.parent;
+                let probeCanvasCtx = null;
+
+                function parseColorToRgb(cssColor) {
+                    if (!cssColor) return null;
+                    const s = String(cssColor).trim().toLowerCase();
+                    if (!s || s === 'transparent' || s === 'rgba(0, 0, 0, 0)' || s === 'rgba(0,0,0,0)') {
+                        return null;
+                    }
+                    // Standard rgb(...) / rgba(...)
+                    const rgbaMatch = s.match(/rgba?\\(\\s*([\\d.]+)[,\\s]+([\\d.]+)[,\\s]+([\\d.]+)(?:[,/\\s]+([\\d.]+))?\\s*\\)/);
+                    if (rgbaMatch) {
+                        const a = rgbaMatch[4] !== undefined ? parseFloat(rgbaMatch[4]) : 1.0;
+                        if (a === 0) return null;
+                        return [
+                            Math.round(parseFloat(rgbaMatch[1])),
+                            Math.round(parseFloat(rgbaMatch[2])),
+                            Math.round(parseFloat(rgbaMatch[3]))
+                        ];
+                    }
+                    // macOS Safari / Chrome Wide-Gamut CSS Color 4: color(srgb r g b [/ a]) or color(display-p3 r g b [/ a])
+                    const colorFnMatch = s.match(/color\\(\\s*[a-z0-9-]+\\s+([\\d.]+)\\s+([\\d.]+)\\s+([\\d.]+)(?:\\s*\\/\\s*([\\d.]+))?\\s*\\)/);
+                    if (colorFnMatch) {
+                        const a = colorFnMatch[4] !== undefined ? parseFloat(colorFnMatch[4]) : 1.0;
+                        if (a === 0) return null;
+                        return [
+                            Math.round(parseFloat(colorFnMatch[1]) * 255),
+                            Math.round(parseFloat(colorFnMatch[2]) * 255),
+                            Math.round(parseFloat(colorFnMatch[3]) * 255)
+                        ];
+                    }
+                    // Fallback: normalize any CSS color format via 1x1 canvas
+                    try {
+                        if (!probeCanvasCtx) {
+                            const c = parentDoc.createElement('canvas');
+                            c.width = 1;
+                            c.height = 1;
+                            probeCanvasCtx = c.getContext('2d', { willReadFrequently: true });
+                        }
+                        if (probeCanvasCtx) {
+                            probeCanvasCtx.clearRect(0, 0, 1, 1);
+                            probeCanvasCtx.fillStyle = s;
+                            probeCanvasCtx.fillRect(0, 0, 1, 1);
+                            const d = probeCanvasCtx.getImageData(0, 0, 1, 1).data;
+                            if (d[3] === 0) return null;
+                            return [d[0], d[1], d[2]];
+                        }
+                    } catch (err) {}
+                    return null;
+                }
+
+                function computeLuminance(rgb) {
+                    return 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+                }
+
                 function syncThemeAttribute() {
                     const appEl = parentDoc.querySelector('.stApp');
                     if (!appEl) return;
-                    const bg = window.parent.getComputedStyle(appEl).backgroundColor || '';
-                    const m = bg.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);
-                    let isDark = false;
-                    if (m) {
-                        const r = parseInt(m[1], 10);
-                        const g = parseInt(m[2], 10);
-                        const b = parseInt(m[3], 10);
-                        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-                        isDark = lum < 128;
+                    const candidates = [
+                        appEl,
+                        parentDoc.querySelector('[data-testid="stAppViewContainer"]'),
+                        parentDoc.querySelector('[data-testid="stHeader"]'),
+                        parentDoc.querySelector('[data-testid="stSidebar"]'),
+                        parentDoc.body,
+                        parentDoc.documentElement
+                    ];
+                    let isDark = null;
+                    for (let i = 0; i < candidates.length; i++) {
+                        const el = candidates[i];
+                        if (!el) continue;
+                        const bg = parentWin.getComputedStyle(el).backgroundColor || '';
+                        const rgb = parseColorToRgb(bg);
+                        if (rgb) {
+                            isDark = computeLuminance(rgb) < 128;
+                            break;
+                        }
+                    }
+                    if (isDark === null) {
+                        const txtRgb = parseColorToRgb(parentWin.getComputedStyle(appEl).color || '');
+                        if (txtRgb) {
+                            isDark = computeLuminance(txtRgb) > 160;
+                        } else if (parentWin.matchMedia) {
+                            isDark = parentWin.matchMedia('(prefers-color-scheme: dark)').matches;
+                        } else {
+                            isDark = false;
+                        }
                     }
                     const themeVal = isDark ? 'dark' : 'light';
-                    if (appEl.getAttribute('data-theme') !== themeVal) {
-                        appEl.setAttribute('data-theme', themeVal);
-                    }
-                    if (parentDoc.documentElement.getAttribute('data-theme') !== themeVal) {
-                        parentDoc.documentElement.setAttribute('data-theme', themeVal);
-                    }
-                    if (parentDoc.body && parentDoc.body.getAttribute('data-theme') !== themeVal) {
-                        parentDoc.body.setAttribute('data-theme', themeVal);
+                    const targets = [
+                        appEl,
+                        parentDoc.documentElement,
+                        parentDoc.body,
+                        parentDoc.querySelector('[data-testid="stAppViewContainer"]')
+                    ];
+                    for (let j = 0; j < targets.length; j++) {
+                        const t = targets[j];
+                        if (t && t.getAttribute('data-theme') !== themeVal) {
+                            t.setAttribute('data-theme', themeVal);
+                        }
                     }
                 }
+
                 syncThemeAttribute();
                 const appEl = parentDoc.querySelector('.stApp');
-                if (appEl && !window.parent.__mapThemeObserverAttached) {
-                    window.parent.__mapThemeObserverAttached = true;
+                if (appEl && !parentWin.__mapThemeObserverAttached) {
+                    parentWin.__mapThemeObserverAttached = true;
                     const obs = new MutationObserver(syncThemeAttribute);
                     obs.observe(appEl, { attributes: true, attributeFilter: ['class', 'style'] });
                     obs.observe(parentDoc.documentElement, { attributes: true, attributeFilter: ['class', 'style'] });
-                    window.parent.setInterval(syncThemeAttribute, 500);
+                    if (parentDoc.body) {
+                        obs.observe(parentDoc.body, { attributes: true, attributeFilter: ['class', 'style'] });
+                    }
+                    parentWin.setInterval(syncThemeAttribute, 400);
                 }
             } catch(e) {}
         })();
