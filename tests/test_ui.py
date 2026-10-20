@@ -2378,12 +2378,13 @@ def test_ui_online_search_stop_mining_and_layout_ratios():
             assert "30s" not in label
             assert "min" not in label
 
-    # Verify column layout in app.py
+    # Verify column layout in app.py (Two-Row Search Toolbar or legacy 1-row)
     import inspect
     import app
     source = inspect.getsource(app)
     assert (
-        "[1.85, 0.65, 0.85, 1.35, 0.9]" in source
+        ("[3.80, 1.15]" in source and "[1.0, 1.15, 1.55]" in source)
+        or "[1.85, 0.65, 0.85, 1.35, 0.9]" in source
         or "[1.6, 0.65, 0.85, 1.45, 0.95]" in source
         or "[2.0, 0.75, 0.9, 1.45, 0.9]" in source
     )
@@ -4964,9 +4965,10 @@ def test_ui_macbook_dark_mode_dropdowns_sidebar_and_plotly_layouts():
     assert "parseColorToRgb" in js_source
     assert "stAppViewContainer" in js_source
 
-    # 2. Dropdown wrapping & virtual dropdown rules
+    # 2. Dropdown wrapping & virtual dropdown rules + Two-Row Online Search Toolbar
     assert 'ul[data-testid="stSelectboxVirtualDropdown"]' in CUSTOM_CSS
     assert "overflow-wrap: anywhere !important;" in CUSTOM_CSS
+    assert ".st-key-lit_search_options_label_row" in CUSTOM_CSS
 
     # 3. Sidebar vertical stacking & Plotly chart layouts in Demo Mode
     at = AppTest.from_file(APP_PATH, default_timeout=35.0)
@@ -4978,16 +4980,20 @@ def test_ui_macbook_dark_mode_dropdowns_sidebar_and_plotly_layouts():
 
     app_src = Path(APP_PATH).read_text(encoding="utf-8")
     assert "col_s1, col_s2 = st.columns(2)" not in app_src
+    assert 'key="lit_search_options_label_row"' in app_src
     assert "<b>DoE Multi-Round Formulation Space</b>" in app_src
     assert "<br><sup>{anchor.additive_name} in {target_elyte_clean}" in app_src
 
-    # Verify HTML Live Preview symmetric dashboard has non-overlapping annotation & bottom legend
+    # Verify HTML Live Preview symmetric dashboard has non-overlapping HTML diagnostic banner,
+    # hidden-tab visibility re-plotter, and bottom legend with standoff
     campaign = at.session_state["campaign_result"]
     assert campaign is not None and campaign.best_candidate is not None
     engine = ElectrochemicalPlotEngine(output_dir="./reports")
     html_content = engine._render_symmetric_dashboard(campaign.best_candidate.analysis_report)
-    assert '"y": 1.03' in html_content
-    assert '"showarrow": false' in html_content.lower()
-    assert '"y": -0.22' in html_content
-
-
+    assert 'class="plot-diag-banner"' in html_content
+    assert "rebuildAllPlotsClean" in html_content
+    assert "repairSvgLegendsInDom" in html_content
+    assert "hasCollapsedLegendOrBBox" in html_content
+    assert "clip-path: none !important;" in html_content
+    assert '"standoff": 10' in html_content
+    assert '"y": -0.25' in html_content

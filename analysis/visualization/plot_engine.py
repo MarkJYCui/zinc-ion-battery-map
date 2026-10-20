@@ -128,13 +128,13 @@ class ElectrochemicalPlotEngine:
 
         # Adaptive Failure-Aware Cycling Windowing & Interactive Dual-Range Configuration (Approach C)
         xaxis_vt: Dict[str, Any] = {
-            "title": f"Time ({t_unit})",
+            "title": {"text": f"Time ({t_unit})", "standoff": 14},
             "rangeslider": {"visible": True},
             "automargin": True,
         }
 
         shapes: List[Dict[str, Any]] = []
-        annotations: List[Dict[str, Any]] = []
+        diag_banner_html = ""
 
         has_failure = symm is not None and (
             symm.failure_time_hours is not None
@@ -160,7 +160,7 @@ class ElectrochemicalPlotEngine:
                 "line": {"color": "#d62728", "width": 2, "dash": "dash"},
             })
 
-            # Diagnostic annotation tag placed above the plot canvas so it never overlaps voltage traces
+            # Diagnostic banner placed in HTML flow above the plot canvas so it never overlaps voltage traces or titles
             diag_text = (
                 symm.total_test_summary.get("diagnostic_message")
                 if symm.total_test_summary and isinstance(symm.total_test_summary, dict)
@@ -173,30 +173,19 @@ class ElectrochemicalPlotEngine:
                 else:
                     diag_text = f"Failure Detected at {t_fail:.1f} h (Cycle {cyc}) - Mode: {symm.failure_mode}"
 
-            annotations.append({
-                "x": 0.5,
-                "xref": "paper",
-                "y": 1.03,
-                "yref": "paper",
-                "xanchor": "center",
-                "yanchor": "bottom",
-                "text": diag_text,
-                "showarrow": False,
-                "bgcolor": "rgba(255, 235, 235, 0.96)",
-                "bordercolor": "#d62728",
-                "borderwidth": 1,
-                "borderpad": 4,
-                "font": {"color": "#d62728", "size": 11},
-            })
+            diag_banner_html = f'<div class="plot-diag-banner">⚠️ {diag_text}</div>'
         else:
             t_window_max = max_t
 
         init_24h_max = min(24.0, max_t)
         toolbar_html = f"""
-        <div class="plot-toolbar" role="group" aria-label="Time Range Selector">
-            <button type="button" class="plot-range-btn active" onclick="setPlotVtRange(this, 'plot_vt', [0, {t_window_max}], false)">0 to Failure (Auto)</button>
-            <button type="button" class="plot-range-btn" onclick="setPlotVtRange(this, 'plot_vt', [0, {max_t}], true)">Full Test</button>
-            <button type="button" class="plot-range-btn" onclick="setPlotVtRange(this, 'plot_vt', [0, {init_24h_max}], false)">Initial 24h</button>
+        <div class="plot-toolbar-wrapper">
+            <div class="plot-toolbar" role="group" aria-label="Time Range Selector">
+                <button type="button" class="plot-range-btn active" onclick="setPlotVtRange(this, 'plot_vt', [0, {t_window_max}], false)">0 to Failure (Auto)</button>
+                <button type="button" class="plot-range-btn" onclick="setPlotVtRange(this, 'plot_vt', [0, {max_t}], true)">Full Test</button>
+                <button type="button" class="plot-range-btn" onclick="setPlotVtRange(this, 'plot_vt', [0, {init_24h_max}], false)">Initial 24h</button>
+            </div>
+            {diag_banner_html}
         </div>
         """
 
@@ -206,18 +195,16 @@ class ElectrochemicalPlotEngine:
                 "text": f"Galvanostatic Voltage Profile ({curr_dens:.2f} mA/cm²)",
                 "x": 0.5,
                 "xanchor": "center",
-                "y": 0.96 if annotations else 0.95,
+                "y": 0.95,
                 "yanchor": "top",
             },
             "xaxis": xaxis_vt,
             "yaxis": {"title": "Cell Potential vs Zn/Zn²⁺ (V)", "automargin": True},
             "template": "plotly_white",
-            "margin": {"t": 92 if annotations else 60, "b": 65, "l": 65, "r": 30},
+            "margin": {"t": 55, "b": 75, "l": 65, "r": 30},
         }
         if shapes:
             layout_vt["shapes"] = shapes
-        if annotations:
-            layout_vt["annotations"] = annotations
 
         plots = [
             {
@@ -235,16 +222,16 @@ class ElectrochemicalPlotEngine:
                         "x": 0.5,
                         "xanchor": "center",
                     },
-                    "xaxis": {"title": "Cycle Number", "automargin": True},
+                    "xaxis": {"title": {"text": "Cycle Number", "standoff": 10}, "automargin": True},
                     "yaxis": {"title": "Overpotential / Hysteresis (mV)", "automargin": True},
                     "legend": {
                         "orientation": "h",
                         "yanchor": "top",
-                        "y": -0.22,
+                        "y": -0.25,
                         "xanchor": "center",
                         "x": 0.5,
                     },
-                    "margin": {"t": 55, "b": 80, "l": 65, "r": 30},
+                    "margin": {"t": 55, "b": 95, "l": 65, "r": 30},
                     "template": "plotly_white",
                 },
             },
@@ -399,7 +386,7 @@ class ElectrochemicalPlotEngine:
                         "x": 0.5,
                         "xanchor": "center",
                     },
-                    "xaxis": {"title": "Cycle Number", "showgrid": True, "automargin": True},
+                    "xaxis": {"title": {"text": "Cycle Number", "standoff": 10}, "showgrid": True, "automargin": True},
                     "yaxis": {"title": "Specific Capacity (mAh/g)", "side": "left", "showgrid": True, "automargin": True},
                     "yaxis2": {
                         "title": "Coulombic Efficiency (%)",
@@ -410,8 +397,8 @@ class ElectrochemicalPlotEngine:
                         "automargin": True,
                     },
                     "hovermode": "x unified",
-                    "legend": {"orientation": "h", "yanchor": "top", "y": -0.22, "xanchor": "center", "x": 0.5},
-                    "margin": {"t": 60, "b": 80, "l": 65, "r": 65},
+                    "legend": {"orientation": "h", "yanchor": "top", "y": -0.25, "xanchor": "center", "x": 0.5},
+                    "margin": {"t": 60, "b": 95, "l": 65, "r": 65},
                     "template": "plotly_white",
                 },
             },
@@ -634,16 +621,16 @@ class ElectrochemicalPlotEngine:
                         "x": 0.5,
                         "xanchor": "center",
                     },
-                    "xaxis": {"title": "Potential vs Zn/Zn²⁺ (V)", "automargin": True},
+                    "xaxis": {"title": {"text": "Potential vs Zn/Zn²⁺ (V)", "standoff": 10}, "automargin": True},
                     "yaxis": {"title": "Current (mA)", "automargin": True},
                     "legend": {
                         "orientation": "h",
                         "yanchor": "top",
-                        "y": -0.22,
+                        "y": -0.25,
                         "xanchor": "center",
                         "x": 0.5,
                     },
-                    "margin": {"t": 55, "b": 80, "l": 65, "r": 30},
+                    "margin": {"t": 55, "b": 95, "l": 65, "r": 30},
                     "template": "plotly_white",
                 },
             }
@@ -713,12 +700,12 @@ class ElectrochemicalPlotEngine:
             )
         fig.update_layout(
             title=dict(text=f"Cyclic Voltammogram ({report.file_source})", x=0.5, xanchor="center"),
-            xaxis=dict(title="Cell Potential vs Zn/Zn²⁺ (V)", automargin=True),
+            xaxis=dict(title=dict(text="Cell Potential vs Zn/Zn²⁺ (V)", standoff=10), automargin=True),
             yaxis=dict(title="Current (mA)", automargin=True),
-            legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5),
+            legend=dict(orientation="h", yanchor="top", y=-0.25, xanchor="center", x=0.5),
             template="plotly_white",
-            height=440,
-            margin=dict(l=55, r=25, t=55, b=80),
+            height=450,
+            margin=dict(l=55, r=25, t=55, b=95),
         )
         return fig
 
@@ -953,6 +940,7 @@ class ElectrochemicalPlotEngine:
     ) -> str:
         plot_divs = []
         plot_scripts = []
+        plot_specs_list = []
 
         for p in plots:
             div_id = p["div_id"]
@@ -964,9 +952,11 @@ class ElectrochemicalPlotEngine:
             else:
                 plot_divs.append(f'<div id="{div_id}" class="plot-box"></div>')
             plot_scripts.append(f'Plotly.newPlot("{div_id}", {data_json}, {layout_json}, {{responsive: true}});')
+            plot_specs_list.append(f'{{divId: "{div_id}", data: {data_json}, layout: {layout_json}}}')
 
         divs_html = "\n".join(plot_divs)
         scripts_js = "\n".join(plot_scripts)
+        specs_js = ",\n            ".join(plot_specs_list)
 
         tech_val = report.technique.value if hasattr(report.technique, "value") else str(report.technique)
         return f"""<!DOCTYPE html>
@@ -1012,12 +1002,29 @@ class ElectrochemicalPlotEngine:
             min-height: 450px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }}
+        .plot-toolbar-wrapper {{
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 8px;
+        }}
         .plot-toolbar {{
             display: flex;
             flex-wrap: wrap;
             gap: 8px;
             align-items: center;
-            margin-bottom: 6px;
+        }}
+        .plot-diag-banner {{
+            background-color: #fff5f5;
+            color: #c92a2a;
+            border: 1px solid #ffa8a8;
+            border-left: 4px solid #e03131;
+            border-radius: 6px;
+            padding: 7px 12px;
+            font-size: 12.5px;
+            font-weight: 600;
+            line-height: 1.4;
+            word-break: break-word;
         }}
         .plot-range-btn {{
             background: #f1f5f9;
@@ -1040,6 +1047,13 @@ class ElectrochemicalPlotEngine:
             color: #ffffff;
             border-color: #0284c7;
         }}
+        /* Prevent SVG legend clipPath from truncating legend labels when rendered inside hidden tabs */
+        .js-plotly-plot .legend .scrollbox,
+        .plotly .legend .scrollbox,
+        .js-plotly-plot g.legend {{
+            clip-path: none !important;
+            overflow: visible !important;
+        }}
         .footer {{
             margin-top: 40px;
             text-align: center;
@@ -1049,6 +1063,9 @@ class ElectrochemicalPlotEngine:
     </style>
 </head>
 <body>
+    <svg id="__plotly_bbox_probe_svg__" style="position:fixed;top:-9999px;left:-9999px;width:200px;height:40px;visibility:hidden;pointer-events:none;">
+        <text id="__plotly_bbox_probe_text__" font-size="12">Overpotential Hysteresis</text>
+    </svg>
     <div class="header">
         <h1>Autonomous ZIB Electrochemical Characterization Report</h1>
         <p><strong>Sample ID:</strong> {report.sample_id} | <strong>Technique:</strong> {tech_val} | <strong>Source:</strong> {report.file_source}</p>
@@ -1061,6 +1078,10 @@ class ElectrochemicalPlotEngine:
     </div>
 
     <script>
+        var __MAP_PLOT_SPECS__ = [
+            {specs_js}
+        ];
+
         function setPlotVtRange(btn, divId, rangeArr, autoRange) {{
             if (btn && btn.parentElement) {{
                 var btns = btn.parentElement.querySelectorAll('.plot-range-btn');
@@ -1077,15 +1098,204 @@ class ElectrochemicalPlotEngine:
                 }}
             }}
         }}
-        {scripts_js}
-        if (typeof ResizeObserver !== 'undefined') {{
-            var ro = new ResizeObserver(function(entries) {{
-                for (var i = 0; i < entries.length; i++) {{
-                    var el = entries[i].target;
-                    if (el && el.offsetWidth > 0 && typeof Plotly !== 'undefined') {{
-                        try {{ Plotly.Plots.resize(el); }} catch(e) {{}}
+
+        function canMeasureSvgText() {{
+            try {{
+                if (window.frameElement) {{
+                    var fr = window.frameElement.getBoundingClientRect();
+                    if (fr.width <= 10 || fr.height <= 10) {{
+                        return false;
                     }}
                 }}
+            }} catch (e) {{}}
+            var firstPlot = document.querySelector('[id^="plot_"]');
+            if (!firstPlot || firstPlot.offsetWidth <= 50) return false;
+            var probe = document.getElementById('__plotly_bbox_probe_text__');
+            if (probe && probe.getBBox) {{
+                try {{
+                    var bb = probe.getBBox();
+                    if (!bb || bb.width <= 10) return false;
+                }} catch (e) {{
+                    return false;
+                }}
+            }}
+            return true;
+        }}
+
+        function repairSvgLegendsInDom() {{
+            var allPlots = document.querySelectorAll('[id^="plot_"]');
+            for (var p = 0; p < allPlots.length; p++) {{
+                var el = allPlots[p];
+                var clipRects = el.querySelectorAll('clipPath[id*="legend"] rect');
+                for (var c = 0; c < clipRects.length; c++) {{
+                    clipRects[c].setAttribute('width', '2400');
+                    clipRects[c].setAttribute('height', '400');
+                }}
+                var clipNodes = el.querySelectorAll('g.legend, g.legend .scrollbox');
+                for (var cn = 0; cn < clipNodes.length; cn++) {{
+                    clipNodes[cn].removeAttribute('clip-path');
+                }}
+                var legend = el.querySelector('g.legend');
+                if (!legend) continue;
+                var traces = legend.querySelectorAll('g.traces');
+                if (!traces || traces.length < 2) continue;
+
+                var cursorX = 0;
+                var baseRowY = null;
+                var changed = false;
+
+                for (var i = 0; i < traces.length; i++) {{
+                    var tr = traces[i];
+                    var tf = tr.getAttribute('transform') || 'translate(0, 14.5)';
+                    var m = tf.match(/translate\\(\\s*([0-9.\\-]+)[\\s,]+([0-9.\\-]+)/);
+                    var curX = m ? parseFloat(m[1]) : 0;
+                    var curY = m ? parseFloat(m[2]) : 14.5;
+                    if (baseRowY === null) baseRowY = curY;
+
+                    var txtNode = tr.querySelector('text.legendtext');
+                    var txtStr = txtNode ? (txtNode.textContent || '').trim() : '';
+                    var measuredW = 0;
+                    if (txtNode) {{
+                        try {{
+                            if (txtNode.getComputedTextLength) {{
+                                measuredW = Math.max(measuredW, txtNode.getComputedTextLength());
+                            }}
+                        }} catch (e) {{}}
+                        try {{
+                            if (txtNode.getBBox) {{
+                                measuredW = Math.max(measuredW, txtNode.getBBox().width);
+                            }}
+                        }} catch (e) {{}}
+                    }}
+                    var minCharW = txtStr.length * 7.4;
+                    var effectiveTextW = Math.max(measuredW, minCharW, 60);
+                    var itemW = Math.ceil(effectiveTextW + 58);
+
+                    var toggleRect = tr.querySelector('rect.legendtoggle');
+                    if (toggleRect) {{
+                        toggleRect.setAttribute('width', String(Math.ceil(effectiveTextW + 48)));
+                    }}
+
+                    if (i > 0 && Math.abs(curY - baseRowY) < 12) {{
+                        if (curX < cursorX - 2) {{
+                            curX = cursorX;
+                            tr.setAttribute('transform', 'translate(' + curX + ',' + baseRowY + ')');
+                            changed = true;
+                        }}
+                    }}
+                    cursorX = curX + itemW;
+                }}
+
+                var totalLegendW = Math.max(cursorX, 180);
+                var bgRect = legend.querySelector('rect.bg');
+                if (bgRect) {{
+                    var oldBgW = parseFloat(bgRect.getAttribute('width') || '0');
+                    if (oldBgW < totalLegendW) {{
+                        bgRect.setAttribute('width', String(totalLegendW));
+                        changed = true;
+                    }}
+                }}
+
+                if (changed) {{
+                    var legTf = legend.getAttribute('transform') || '';
+                    var lm = legTf.match(/translate\\(\\s*([0-9.\\-]+)[\\s,]+([0-9.\\-]+)/);
+                    var legY = lm ? parseFloat(lm[2]) : 0;
+                    var dragRect = el.querySelector('.nsewdrag');
+                    var plotLeft = dragRect ? parseFloat(dragRect.getAttribute('x') || '65') : 65;
+                    var plotW = dragRect ? parseFloat(dragRect.getAttribute('width') || '0') : 0;
+                    if (plotW <= 50) {{
+                        plotW = Math.max(200, (el.clientWidth || 650) - 95);
+                    }}
+                    var plotCenter = plotLeft + plotW / 2;
+                    var newLegX = Math.max(10, Math.round(plotCenter - totalLegendW / 2));
+                    legend.setAttribute('transform', 'translate(' + newLegX + ',' + legY + ')');
+                }}
+            }}
+        }}
+
+        function hasCollapsedLegendOrBBox() {{
+            for (var i = 0; i < __MAP_PLOT_SPECS__.length; i++) {{
+                var el = document.getElementById(__MAP_PLOT_SPECS__[i].divId);
+                if (!el) continue;
+                var traces = el.querySelectorAll('g.legend g.traces');
+                if (traces && traces.length >= 2) {{
+                    var bg = el.querySelector('g.legend rect.bg');
+                    var bgW = bg ? parseFloat(bg.getAttribute('width') || '0') : 0;
+                    if (bgW < 220) return true;
+                    var tr1 = traces[1].getAttribute('transform') || '';
+                    var m = tr1.match(/translate\\(\\s*([0-9.\\-]+)/);
+                    if (m && parseFloat(m[1]) < 150) {{
+                        return true;
+                    }}
+                }}
+            }}
+            return false;
+        }}
+
+        function attachAfterPlotListeners() {{
+            var allPlots = document.querySelectorAll('[id^="plot_"]');
+            for (var i = 0; i < allPlots.length; i++) {{
+                var el = allPlots[i];
+                if (el && typeof el.on === 'function' && !el.__hasLegendRepairListener__) {{
+                    el.__hasLegendRepairListener__ = true;
+                    el.on('plotly_afterplot', function() {{
+                        repairSvgLegendsInDom();
+                    }});
+                }}
+            }}
+        }}
+
+        function rebuildAllPlotsClean() {{
+            if (typeof Plotly === 'undefined') return;
+            if (Plotly.Drawing && Plotly.Drawing.savedBBoxes) {{
+                Plotly.Drawing.savedBBoxes = {{}};
+            }}
+            for (var i = 0; i < __MAP_PLOT_SPECS__.length; i++) {{
+                var spec = __MAP_PLOT_SPECS__[i];
+                var el = document.getElementById(spec.divId);
+                if (!el) continue;
+                try {{
+                    var freshData = JSON.parse(JSON.stringify(spec.data));
+                    var freshLayout = JSON.parse(JSON.stringify(spec.layout));
+                    Plotly.purge(el);
+                    Plotly.newPlot(el, freshData, freshLayout, {{responsive: true}});
+                }} catch (e) {{}}
+            }}
+            attachAfterPlotListeners();
+            repairSvgLegendsInDom();
+        }}
+
+        var __initialVisible__ = canMeasureSvgText();
+        {scripts_js}
+        attachAfterPlotListeners();
+        repairSvgLegendsInDom();
+
+        var __replottedWhenVisible__ = __initialVisible__ && !hasCollapsedLegendOrBBox();
+        var __lastContainerWidth__ = 0;
+
+        function checkAndRepairPlots() {{
+            repairSvgLegendsInDom();
+            if (!canMeasureSvgText()) return;
+            var firstPlot = document.querySelector('[id^="plot_"]');
+            var curW = firstPlot ? firstPlot.offsetWidth : 0;
+            if (!__replottedWhenVisible__ || hasCollapsedLegendOrBBox() || (__lastContainerWidth__ > 0 && Math.abs(curW - __lastContainerWidth__) > 15)) {{
+                __lastContainerWidth__ = curW;
+                __replottedWhenVisible__ = true;
+                rebuildAllPlotsClean();
+            }} else if (__lastContainerWidth__ === 0) {{
+                __lastContainerWidth__ = curW;
+            }}
+            repairSvgLegendsInDom();
+        }}
+
+        setInterval(checkAndRepairPlots, 200);
+        window.addEventListener('resize', function() {{
+            setTimeout(checkAndRepairPlots, 80);
+        }});
+
+        if (typeof ResizeObserver !== 'undefined') {{
+            var ro = new ResizeObserver(function() {{
+                checkAndRepairPlots();
             }});
             var plotNodes = document.querySelectorAll('[id^="plot_"]');
             for (var j = 0; j < plotNodes.length; j++) {{

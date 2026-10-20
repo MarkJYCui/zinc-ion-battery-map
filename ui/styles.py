@@ -672,7 +672,7 @@ CUSTOM_CSS = """
         transition: fill 0.2s ease;
     }
 
-    /* Step 1: Batch PDF & Online Search Action Row Equal Height & Centering */
+    /* Step 1: Batch PDF & Online Search Action Row Equal Height & Centering (with wrap support on 13" MacBook) */
     .st-key-btn_process_batch_pdfs button,
     .st-key-btn_clear_uploaded_pdfs button,
     .st-key-batch_pdf_gemini_popover button,
@@ -683,23 +683,24 @@ CUSTOM_CSS = """
     div[data-testid="stColumn"]:has(.st-key-online_search_gemini_popover) [data-testid="stPopoverButton"],
     div[data-testid="stColumn"]:has(.st-key-lit_search_submit_btn) button,
     .st-key-lit_search_submit_btn button {
-        height: 48px !important;
+        height: auto !important;
         min-height: 48px !important;
-        max-height: 48px !important;
+        max-height: none !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
-        line-height: 1.1 !important;
+        line-height: 1.2 !important;
+        padding: 4px 10px !important;
         box-sizing: border-box !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
     }
     .st-key-online_search_gemini_popover [data-testid="stPopover"],
     .st-key-batch_pdf_gemini_popover [data-testid="stPopover"] {
-        height: 48px !important;
+        height: auto !important;
         min-height: 48px !important;
-        max-height: 48px !important;
+        max-height: none !important;
     }
     .st-key-btn_process_batch_pdfs button div[data-testid="stMarkdownContainer"],
     .st-key-btn_clear_uploaded_pdfs button div[data-testid="stMarkdownContainer"],
@@ -718,9 +719,10 @@ CUSTOM_CSS = """
         align-items: center !important;
         justify-content: center !important;
         text-align: center !important;
-        white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
+        line-height: 1.2 !important;
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: clip !important;
     }
     div.st-key-batch_pdf_gemini_popover,
     div.st-key-online_search_gemini_popover,
@@ -772,11 +774,16 @@ CUSTOM_CSS = """
     div[data-testid="stColumn"]:has(.st-key-lit_search_submit_btn) {
         min-width: 0 !important;
     }
-    /* Step 1 Online Search: Label row horizontal alignment with small-screen wrapping support */
+    /* Step 1 Online Search: Label row horizontal alignment with small-screen wrapping support (Row 1 & Row 2) */
     .st-key-lit_search_label_row {
         margin-bottom: -10px !important;
     }
-    .st-key-lit_search_label_row div[data-testid="stColumn"] {
+    .st-key-lit_search_options_label_row {
+        margin-top: 6px !important;
+        margin-bottom: -10px !important;
+    }
+    .st-key-lit_search_label_row div[data-testid="stColumn"],
+    .st-key-lit_search_options_label_row div[data-testid="stColumn"] {
         min-width: 0 !important;
         display: flex !important;
         flex-direction: column !important;
@@ -784,7 +791,8 @@ CUSTOM_CSS = """
         min-height: 24px !important;
         height: auto !important;
     }
-    .st-key-lit_search_label_row .lit-search-label {
+    .st-key-lit_search_label_row .lit-search-label,
+    .st-key-lit_search_options_label_row .lit-search-label {
         font-size: 0.86rem !important;
         font-weight: 600 !important;
         line-height: 1.25 !important;
@@ -884,6 +892,14 @@ CUSTOM_CSS = """
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
+    }
+
+    /* Prevent SVG legend clipPath from truncating legend labels in Plotly charts */
+    .js-plotly-plot .legend .scrollbox,
+    .plotly .legend .scrollbox,
+    .js-plotly-plot g.legend {
+        clip-path: none !important;
+        overflow: visible !important;
     }
 </style>
 """
@@ -1000,6 +1016,21 @@ def inject_global_styles() -> None:
                     }
                 }
 
+                function refreshVisiblePlotlyCharts() {
+                    try {
+                        const plots = parentDoc.querySelectorAll('.js-plotly-plot');
+                        for (let i = 0; i < plots.length; i++) {
+                            const gd = plots[i];
+                            if (gd && gd.offsetWidth > 50 && parentWin.Plotly) {
+                                try {
+                                    parentWin.Plotly.Plots.resize(gd);
+                                    parentWin.Plotly.relayout(gd, { autosize: true });
+                                } catch (err) {}
+                            }
+                        }
+                    } catch (e) {}
+                }
+
                 syncThemeAttribute();
                 const appEl = parentDoc.querySelector('.stApp');
                 if (appEl && !parentWin.__mapThemeObserverAttached) {
@@ -1011,6 +1042,13 @@ def inject_global_styles() -> None:
                         obs.observe(parentDoc.body, { attributes: true, attributeFilter: ['class', 'style'] });
                     }
                     parentWin.setInterval(syncThemeAttribute, 400);
+                    parentDoc.addEventListener('click', function(ev) {
+                        const tabBtn = ev.target && ev.target.closest ? ev.target.closest('button[role="tab"], button[data-baseweb="tab"]') : null;
+                        if (tabBtn) {
+                            setTimeout(refreshVisiblePlotlyCharts, 60);
+                            setTimeout(refreshVisiblePlotlyCharts, 220);
+                        }
+                    }, true);
                 }
             } catch(e) {}
         })();
