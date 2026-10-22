@@ -1,13 +1,12 @@
-name: Keep Streamlit App Alive
-
 on:
   schedule:
-    - cron: '0 */8 * * *' # Runs every 8 hours
-  workflow_dispatch: # Allows you to run it manually from the Actions tab
+    - cron: '0 */8 * * *'
+  workflow_dispatch:
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Streamlit App
-        run: curl -sL https://zinc-ion-battery-map-bvpghpfevrln9egmrecfgr.streamlit.app/ > /dev/null
+        # Removed the -L flag below to prevent redirect loops
+        run: curl -s https://zinc-ion-battery-map-bvpghpfevrln9egmrecfgr.streamlit.app > /dev/null
