@@ -1631,6 +1631,157 @@ def test_literature_deduplication_logic():
     assert new_to_extract[0]["title"] == "Thiourea Additive for Uniform Plating"
 
 
+def test_search_papers_pagination_offset_openalex_and_offline():
+    """
+    Item 4: Verify that _search_openalex receives page = (batch_offset // batch_size) + 1
+    and get_offline_sample_papers slices [offset : offset + limit] to return 25 unseen papers.
+    """
+    import re
+    from discovery.search import get_offline_sample_papers
+
+    page1 = get_offline_sample_papers(query="trehalose zinc ion battery electrolyte additive", limit=25, offset=0)
+    page2 = get_offline_sample_papers(query="trehalose zinc ion battery electrolyte additive", limit=25, offset=25)
+    assert len(page1) == 25
+    assert len(page2) == 25
+
+    page1_ids = {p.paper_id for p in page1}
+    page2_ids = {p.paper_id for p in page2}
+    assert len(page1_ids.intersection(page2_ids)) == 0, "Page 2 offline papers must be completely distinct from Page 1"
+
+    page1_titles = {p.title for p in page1}
+    page2_titles = {p.title for p in page2}
+    assert len(page1_titles.intersection(page2_titles)) == 0, "Page 2 titles must not duplicate Page 1 titles"
+
+    # Verify SemanticScholarClient.search_papers passes page=2 to _search_openalex when offset=25
+    client = SemanticScholarClient(api_key=None)
+    with patch.object(client, "_search_semantic_scholar", return_value=[]), \
+         patch.object(client, "_search_openalex", return_value=[]) as mock_oa:
+        res_p2 = client.search_papers(query="trehalose", limit=25, offset=25, batch_size=25)
+        mock_oa.assert_called_once_with(query="trehalose", limit=25, sort="relevance", page=2)
+        assert len(res_p2) == 25
+        assert {p.paper_id for p in res_p2}.isdisjoint(page1_ids)
+
+    # Verify cross-engine deduplication with exclude_dois / exclude_titles across 3+ searches
+    # always returns a full 25 unseen papers even when S2 returns 24 already-seen papers
+    seen_p1_dois = {p.doi.lower().strip() for p in page1 if p.doi}
+    seen_p1_titles = {re.sub(r'[^a-zA-Z0-9]', '', p.title.lower()) for p in page1 if p.title}
+    with patch.object(client, "_search_semantic_scholar", return_value=page1[:24]), \
+         patch.object(client, "_search_openalex", side_effect=[page1[10:] + page2[:15], page2[15:]]):
+        res_dedup = client.search_papers(
+            query="zinc ion battery electrolyte additive",
+            limit=25,
+            offset=25,
+            batch_size=25,
+            exclude_dois=seen_p1_dois,
+            exclude_titles=seen_p1_titles,
+        )
+        assert len(res_dedup) == 25
+        assert {p.paper_id for p in res_dedup}.isdisjoint(page1_ids)
+
+
+def test_extractor_strips_references_before_llm_slicing():
+    """
+    Item 5: Verify PaperExtractor.extract_from_text strips trailing References / Bibliography /
+    Acknowledgements sections before slicing text[:60000] for the Gemini prompt.
+    """
+    extractor = PaperExtractor()
+    manuscript_text = (
+        "Title: Trehalose Additive for Reversible Zinc Anodes\n"
+        "In this work, 10 mM trehalose in 2 M ZnSO4 electrolyte enables 2000 h cycling.\n\n"
+        "Acknowledgements\n"
+        "We thank the National Science Foundation for funding.\n\n"
+        "References\n"
+        "[1] Author A, Journal of Citric Acid 2020, 50 mM citric acid.\n"
+    )
+    stripped = extractor._strip_references_section(manuscript_text)
+    assert "10 mM trehalose" in stripped
+    assert "Acknowledgements" not in stripped
+    assert "References" not in stripped
+    assert "50 mM citric acid" not in stripped
+
+    captured_texts = []
+    def _mock_llm(txt):
+        captured_texts.append(txt)
+        return {"additives": [], "summary": "Tested"}
+
+    with patch.object(extractor, "_call_llm_structured", side_effect=_mock_llm):
+        extractor.extract_from_text(manuscript_text)
+        assert len(captured_texts) == 1
+        assert "References" not in captured_texts[0]
+        assert "50 mM citric acid" not in captured_texts[0]
+
+
+def test_europepmc_abstract_recovery_for_short_rsc_abstract():
+    """
+    Item 6: Verify SemanticScholarClient recovers full abstracts (> 300 chars) from the
+    Europe PMC REST API when an RSC paper (10.1039/ DOI) has a missing or short abstract.
+    """
+    client = SemanticScholarClient(api_key=None)
+    short_s2_paper = PaperMetadata(
+        paper_id="rsc_short_1",
+        title="Solvation Modulation by Trehalose in Aqueous Zinc Batteries",
+        doi="10.1039/D4TA01234A",
+        venue="Journal of Materials Chemistry A",
+        abstract="Short snippet only.",
+    )
+    full_epmc_abstract = (
+        "Aqueous zinc-ion batteries suffer from severe dendrite growth and parasitic hydrogen evolution. "
+        "Herein, we demonstrate that introducing 10 mM trehalose into 2 M ZnSO4 aqueous electrolyte "
+        "reconstructs the primary Zn2+ solvation sheath and suppresses water reduction, achieving "
+        "over 2200 hours of reversible plating/stripping in symmetric Zn//Zn cells with 99.6% Coulombic efficiency."
+    )
+    assert len(full_epmc_abstract) >= 300
+
+    mock_epmc_resp = MagicMock()
+    mock_epmc_resp.status_code = 200
+    mock_epmc_resp.json.return_value = {
+        "resultList": {
+            "result": [
+                {"abstractText": f"<p>{full_epmc_abstract}</p>"}
+            ]
+        }
+    }
+
+    with patch.object(client, "_search_semantic_scholar", return_value=[short_s2_paper]), \
+         patch("requests.get", return_value=mock_epmc_resp) as mock_get:
+        results = client.search_papers(query="trehalose", limit=1)
+        assert len(results) == 1
+        assert len(results[0].abstract) >= 300
+        assert "10 mM trehalose" in results[0].abstract
+        called_url = mock_get.call_args[0][0]
+        assert "ebi.ac.uk/europepmc/webservices/rest/search?query=DOI:10.1039/D4TA01234A" in called_url
+
+
+def test_benchmark_chips_queries_and_offline_prioritization():
+    """
+    Item 12: Verify that all 5 benchmark chip queries with battery context prioritize
+    matching papers from OFFLINE_SAMPLE_PAPERS that contain verified baseline electrolytes and concentrations.
+    """
+    from discovery.search import get_offline_sample_papers, OFFLINE_SAMPLE_PAPERS
+
+    chip_queries = [
+        ("trehalose zinc ion battery electrolyte additive", "Trehalose", 10.0),
+        ("tetraethylammonium bromide zinc ion battery electrolyte additive", "Tetraethylammonium bromide", 50.0),
+        ("D-sorbitol zinc ion battery electrolyte additive", "D-Sorbitol", 15.0),
+        ("thiourea zinc ion battery electrolyte additive", "Thiourea", 10.0),
+        ("glucose zinc ion battery electrolyte additive", "Glucose", 20.0),
+    ]
+    curated_ids = {p.paper_id for p in OFFLINE_SAMPLE_PAPERS}
+    extractor = PaperExtractor(api_key=None)
+
+    for q_str, expected_name, expected_conc in chip_queries:
+        papers = get_offline_sample_papers(query=q_str, limit=5, offset=0)
+        assert len(papers) >= 1
+        top_paper = papers[0]
+        assert top_paper.paper_id in curated_ids, f"Top paper for '{q_str}' must come from curated OFFLINE_SAMPLE_PAPERS"
+        extracted, _ = extractor.extract_from_text(f"{top_paper.title}\n{top_paper.abstract}")
+        assert len(extracted) >= 1, f"Failed to extract additive from top paper for '{q_str}'"
+        assert expected_name.lower() in extracted[0].name.lower()
+        assert extracted[0].optimal_concentration is not None
+        assert extracted[0].optimal_concentration.value == expected_conc
+        assert "ZnSO" in extracted[0].battery_context.baseline_electrolyte
+
+
 
 
 

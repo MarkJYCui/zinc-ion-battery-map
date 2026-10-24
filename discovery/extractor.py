@@ -244,6 +244,20 @@ class PaperExtractor:
         except Exception:
             return {}
 
+    @staticmethod
+    def _strip_references_section(text: str) -> str:
+        """
+        Strip trailing References / Bibliography / Acknowledgements section from manuscript text
+        to save ~20-30% LLM prompt tokens and prevent citation false positives.
+        """
+        if not text:
+            return ""
+        ref_match = re.search(
+            r'\n\s*(?:References|REFERENCES|Bibliography|BIBLIOGRAPHY|Literature Cited|Notes and references|Acknowledgements|ACKNOWLEDGEMENTS|Acknowledgments|ACKNOWLEDGMENTS)\b',
+            text
+        )
+        return text[:ref_match.start()] if ref_match else text
+
     def extract_from_text(self, text: str) -> Tuple[List[ExtractedAdditive], str]:
         """
         Passes text to the LLM (or heuristic domain extractor if offline) and enforces
@@ -252,20 +266,22 @@ class PaperExtractor:
         if not text or not text.strip():
             return [], "Extraction skipped: Document contains empty text."
 
+        cleaned_body_text = self._strip_references_section(text)
+
         is_mocked = hasattr(self._call_llm_structured, "mock_calls") or hasattr(self._call_llm_structured, "assert_called")
         if not self._genai_client and not is_mocked:
-            heuristics = self._extract_heuristic_from_text(text)
+            heuristics = self._extract_heuristic_from_text(cleaned_body_text)
             if heuristics:
                 return heuristics, "Extracted electrolyte additive parameters using domain knowledge extractor (offline mode)."
             return [], "No electrolyte additive entity identified in document text. Ensure the manuscript investigates electrolyte additives for aqueous zinc batteries."
 
         try:
             if is_mocked:
-                payload = self._call_llm_structured(text)
+                payload = self._call_llm_structured(cleaned_body_text)
             else:
                 prompt = (
                     f"{EXTRACTION_PROMPT}\n\n"
-                    f"Analyze the following academic manuscript text and extract electrolyte additive data:\n\n{text[:60000]}"
+                    f"Analyze the following academic manuscript text and extract electrolyte additive data:\n\n{cleaned_body_text[:60000]}"
                 )
                 if hasattr(self._genai_client, "models"):
                     try:
@@ -712,8 +728,7 @@ class PaperExtractor:
         matched_pos = -1
 
         # 1. Strip bibliography / references section so citations don't trigger false positives
-        ref_match = re.search(r'\n\s*(?:References|REFERENCES|Bibliography|Literature Cited|Notes and references)\b', text)
-        body_text = text[:ref_match.start()] if ref_match else text
+        body_text = self._strip_references_section(text)
         body_lower = body_text.lower()
         title_line = text.split('\n')[0].strip()
 

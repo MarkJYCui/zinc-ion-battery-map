@@ -743,12 +743,23 @@ if is_demo and tab_run is not None:
         st.markdown(f"### **{tr('tab1_title')}**")
         st.markdown(tr("tab1_desc"))
 
-        col_btn, col_info = st.columns([1.5, 2.5])
-        with col_btn:
-            run_campaign_btn = st.button(tr("btn_run_campaign"), type="primary", use_container_width=True)
-        with col_info:
-            round_info = f"Closed-Loop: {closed_loop_iterations} Rounds ({num_doe_samples} in Batch 1 + {adaptive_samples_per_round} in follow-up rounds)" if closed_loop_iterations >= 2 else f"Single Pass: {num_doe_samples} points"
-            st.caption(f"**Experiment Setup:** {selected_additive_name} ({published_conc_input} mM in {format_chem_formula(parent_electrolyte_input)}) ➔ Transferred to **{format_chem_formula(selected_target_salt)}** using {doe_method.upper()} | {round_info}.")
+        with st.container(key="tab1_run_action_row"):
+            col_btn, col_info = st.columns([1.5, 2.5], vertical_alignment="center")
+            with col_btn:
+                run_campaign_btn = st.button(
+                    tr("btn_run_campaign"),
+                    key="btn_tab1_run_campaign",
+                    type="primary",
+                    use_container_width=True,
+                )
+            with col_info:
+                round_info = f"Closed-Loop: {closed_loop_iterations} Rounds ({num_doe_samples} in Batch 1 + {adaptive_samples_per_round} in follow-up rounds)" if closed_loop_iterations >= 2 else f"Single Pass: {num_doe_samples} points"
+                st.markdown(
+                    f'<div class="tab1-experiment-setup-info" style="font-size: 1.0rem; line-height: 1.35; display: flex; align-items: center; min-height: 44px; margin: 0; padding: 0; color: inherit;">'
+                    f'<span><strong>Experiment Setup:</strong> {selected_additive_name} ({published_conc_input} mM in {format_chem_formula(parent_electrolyte_input)}) ➔ Transferred to <strong>{format_chem_formula(selected_target_salt)}</strong> using {doe_method.upper()} | {round_info}.</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
         status_container = st.container()
 
@@ -830,6 +841,52 @@ if is_demo and tab_run is not None:
                 progress_bar.progress(1.0)
                 status_text.markdown(tr("opt_completed"))
                 st.markdown('</div>', unsafe_allow_html=True)
+
+                if is_demo and campaign_res:
+                    st.session_state["last_demo_campaign_modal_shown"] = True
+                    st.session_state["show_formulation_reminder_modal"] = False
+
+                    @st.dialog(title=tr("demo_campaign_modal_title"), width="large")
+                    def _show_demo_campaign_modal():
+                        st.markdown(tr("demo_campaign_modal_intro"))
+                        st.markdown(tr("demo_campaign_modal_steps"))
+                        best_cell = campaign_res.best_candidate
+                        if best_cell:
+                            symm_rep = best_cell.analysis_report.symmetric_cell if best_cell.analysis_report else None
+                            act_m = (symm_rep.active_cycling_metrics or {}) if symm_rep else {}
+                            life_h = act_m.get("active_lifespan_hours", symm_rep.total_lifespan_hours if symm_rep else 120.0)
+                            overpot_mv = act_m.get("mean_overpotential_mv", symm_rep.mean_overpotential_mv if symm_rep else 28.0)
+                            if best_cell.analysis_report and best_cell.analysis_report.asymmetric_cell:
+                                ce_val = best_cell.analysis_report.asymmetric_cell.average_ce_percent
+                            elif best_cell.analysis_report and best_cell.analysis_report.full_cell:
+                                ce_val = best_cell.analysis_report.full_cell.average_coulombic_efficiency_percent
+                            else:
+                                ce_val = min(99.9, max(96.0, 98.5 + (life_h / 120.0) * 1.1 - (overpot_mv - 28.0) * 0.03))
+                            st.markdown(f"#### {tr('demo_campaign_modal_winner_header')}")
+                            st.success(
+                                tr(
+                                    "demo_campaign_modal_winner_summary",
+                                    sample_id=best_cell.sample_id,
+                                    vial_id=best_cell.vial_id,
+                                    additive_mM=best_cell.additive_conc_mM,
+                                    additive_name=campaign_res.formulation_plan.additive_name,
+                                    salt_M=best_cell.salt_conc_M,
+                                    target_salt=format_chem_formula(campaign_res.target_salt),
+                                    ce_pct=ce_val,
+                                    lifespan_h=life_h,
+                                    overpot_mV=overpot_mv,
+                                )
+                            )
+                        st.info(tr("demo_campaign_modal_sidebar_tip"))
+                        if st.button(
+                            tr("demo_campaign_modal_close_btn"),
+                            key="btn_close_demo_campaign_modal",
+                            type="primary",
+                            use_container_width=True,
+                        ):
+                            st.rerun()
+
+                    _show_demo_campaign_modal()
 
         # If campaign has run (or load default pre-run)
         campaign: Optional[CampaignResult] = st.session_state.campaign_result
@@ -1239,7 +1296,7 @@ with tab_step1:
                     tr("append_to_dataset_label"),
                     value=st.session_state.get("lit_search_append_mode", False),
                     key="lit_search_append_checkbox",
-                    help="Keep previously mined literature papers and append newly discovered papers to your cumulative dataset.",
+                    help=tr("append_to_dataset_help"),
                 )
                 st.session_state["lit_search_append_mode"] = append_mode_active
 
@@ -1411,7 +1468,7 @@ with tab_step1:
                     key="btn_chip_trehalose",
                     use_container_width=True,
                     on_click=_apply_quick_search_chip,
-                    args=("trehalose",),
+                    args=("trehalose zinc ion battery electrolyte additive",),
                 )
             with col_c2:
                 st.button(
@@ -1419,7 +1476,7 @@ with tab_step1:
                     key="btn_chip_teabr",
                     use_container_width=True,
                     on_click=_apply_quick_search_chip,
-                    args=("tetraethylammonium bromide",),
+                    args=("tetraethylammonium bromide zinc ion battery electrolyte additive",),
                 )
             with col_c3:
                 st.button(
@@ -1427,7 +1484,7 @@ with tab_step1:
                     key="btn_chip_sorbitol",
                     use_container_width=True,
                     on_click=_apply_quick_search_chip,
-                    args=("sorbitol",),
+                    args=("D-sorbitol zinc ion battery electrolyte additive",),
                 )
             with col_c4:
                 st.button(
@@ -1435,7 +1492,7 @@ with tab_step1:
                     key="btn_chip_thiourea",
                     use_container_width=True,
                     on_click=_apply_quick_search_chip,
-                    args=("thiourea",),
+                    args=("thiourea zinc ion battery electrolyte additive",),
                 )
             with col_c5:
                 st.button(
@@ -1443,7 +1500,7 @@ with tab_step1:
                     key="btn_chip_glucose",
                     use_container_width=True,
                     on_click=_apply_quick_search_chip,
-                    args=("glucose",),
+                    args=("glucose zinc ion battery electrolyte additive",),
                 )
 
         is_fetch_next = st.session_state.pop("trigger_literature_fetch_next", False)
@@ -1457,15 +1514,26 @@ with tab_step1:
             if is_fetch_next:
                 q_text = (st.session_state.get("literature_search_query") or search_query_input or "").strip()
                 is_appending = True
-                query_offset = st.session_state.get("lit_search_offset", len(st.session_state.get("literature_search_results", [])))
+                prev_off = st.session_state.get("lit_search_offset", st.session_state.get("paper_search_offset", 0))
+                query_offset = prev_off if prev_off > 0 else len(st.session_state.get("literature_search_results", []))
+                st.session_state["lit_search_offset"] = query_offset
+                st.session_state["paper_search_offset"] = query_offset
             else:
                 q_text = (search_query_input or "").strip()
+                prev_exec_q = (st.session_state.get("last_executed_lit_query") or st.session_state.get("literature_search_query") or "").strip()
                 st.session_state["literature_search_query"] = q_text
                 st.session_state["lit_search_current_page"] = 1
                 is_appending = append_mode_active
-                query_offset = 0
-                if not is_appending:
+                existing_res_len = len(st.session_state.get("literature_search_results", []))
+                if is_appending and existing_res_len > 0 and q_text.lower() == prev_exec_q.lower():
+                    prev_off = st.session_state.get("lit_search_offset", st.session_state.get("paper_search_offset", 0))
+                    query_offset = prev_off if prev_off >= existing_res_len else (prev_off + 25 if prev_off > 0 else max(25, existing_res_len))
+                    st.session_state["lit_search_offset"] = query_offset
+                    st.session_state["paper_search_offset"] = query_offset
+                else:
+                    query_offset = 0
                     st.session_state["lit_search_offset"] = 0
+                    st.session_state["paper_search_offset"] = 0
 
             existing_papers = list(st.session_state.get("literature_search_results", [])) if is_appending else []
             existing_records = list(st.session_state.get("literature_mined_records", [])) if is_appending else []
@@ -1497,6 +1565,10 @@ with tab_step1:
                         lit_progress_bar.progress(pct, text=f"📥 {tr('batch_progress_msg', batch=batch_idx, total=total_batches, start=p_start, end=p_end)} ({len(accum)}/{search_limit})")
                         status_box.write(f"📥 **{tr('batch_progress_msg', batch=batch_idx, total=total_batches, start=p_start, end=p_end)}** ({len(accum)}/{search_limit})")
 
+                    # Deduplicate against existing accumulated papers by DOI and normalized title
+                    seen_dois = {getattr(p, "doi", "").lower().strip() for p in existing_papers if getattr(p, "doi", None)}
+                    seen_titles = {re.sub(r'[^a-zA-Z0-9]', '', (getattr(p, "title", "") or "").lower()) for p in existing_papers}
+
                     status_box.write(f"📥 **{tr('mining_stage_retrieval')}**...")
                     found = client.search_papers(
                         query=q_text,
@@ -1505,13 +1577,12 @@ with tab_step1:
                         sort=search_sort,
                         batch_size=25,
                         pause_seconds=0.3,
-                        batch_callback=_stream_milestone
+                        batch_callback=_stream_milestone,
+                        exclude_dois=seen_dois,
+                        exclude_titles=seen_titles,
                     )
                     lit_progress_bar.progress(0.20, text=f"🤖 {tr('mining_stage_extraction')}")
 
-                    # Deduplicate against existing accumulated papers by DOI and normalized title
-                    seen_dois = {getattr(p, "doi", "").lower().strip() for p in existing_papers if getattr(p, "doi", None)}
-                    seen_titles = {re.sub(r'[^a-zA-Z0-9]', '', (getattr(p, "title", "") or "").lower()) for p in existing_papers}
                     papers_to_extract = []
                     for p in found:
                         doi_k = (getattr(p, "doi", "") or "").lower().strip()
@@ -1601,7 +1672,9 @@ with tab_step1:
                         st.session_state["extracted_additives"] = all_unique_additives
                         st.session_state["literature_search_results"] = combined_found
                         st.session_state["literature_mined_records"] = combined_records
-                        st.session_state["lit_search_offset"] = query_offset + len(found)
+                        st.session_state["last_executed_lit_query"] = q_text
+                        st.session_state["lit_search_offset"] = query_offset + max(search_limit, len(found))
+                        st.session_state["paper_search_offset"] = st.session_state["lit_search_offset"]
 
                         # Pre-cache CSV and XLSX downloads inside the active status block so user sees progress
                         cached_csv = generate_mined_literature_csv(combined_records)
@@ -1781,6 +1854,7 @@ with tab_step1:
                     st.session_state["literature_search_results"] = []
                     st.session_state["literature_mined_records"] = []
                     st.session_state["lit_search_offset"] = 0
+                    st.session_state["paper_search_offset"] = 0
                     st.toast(tr("mining_dataset_reset_toast"), icon="🗑️")
                     st.rerun()
 
@@ -1824,16 +1898,17 @@ with tab_step1:
                           "royal society of chemistry" in venue_str.lower() or 
                           "rsc" in venue_str.lower().split())
 
+                clean_title = clean_scientific_text(paper.title)
+                clean_abstract = clean_scientific_text(paper.abstract) if paper.abstract else tr("no_abstract_available")
+                is_rsc_partial = is_rsc and (not paper.abstract or len(clean_abstract) < 300)
+
                 oa_badge = f'<span class="badge-tag badge-green">{tr("badge_open_access")}</span>' if is_oa else f'<span class="badge-tag badge-amber">{tr("badge_subscription")}</span>'
                 doi_badge = f'<a href="https://doi.org/{doi_val}" target="_blank" style="text-decoration: none;"><span class="badge-tag badge-teal">DOI: {doi_val} ↗</span></a>' if doi_val else ''
                 cite_badge = f'<span class="badge-tag badge-blue">Cited by {citation_cnt}</span>' if citation_cnt is not None else ''
-                rsc_badge = f'<span class="badge-tag badge-amber" title="{tr("rsc_abstract_notice")}">⚠️ {tr("badge_rsc_partial_abstract")}</span>' if is_rsc else ''
+                rsc_badge = f'<span class="badge-tag badge-amber" title="{tr("rsc_abstract_notice")}">⚠️ {tr("badge_rsc_partial_abstract")}</span>' if (is_rsc and len(clean_abstract) < 300) else ''
 
                 badges_list = [b for b in [oa_badge, doi_badge, cite_badge, rsc_badge] if b]
                 badges_html = " ".join(badges_list)
-
-                clean_title = clean_scientific_text(paper.title)
-                clean_abstract = clean_scientific_text(paper.abstract) if paper.abstract else tr("no_abstract_available")
 
                 if ext_item is not None:
                     ext_name = ext_item.name
@@ -1892,7 +1967,7 @@ with tab_step1:
                 st.markdown(card_html, unsafe_allow_html=True)
 
                 with st.expander(f"📄 {tr('view_abstract_label')} — {clean_title[:65]}...", expanded=False):
-                    if is_rsc:
+                    if is_rsc and len(clean_abstract) < 300:
                         st.markdown(
                             f'<div style="background-color: rgba(255, 193, 7, 0.12); border-left: 4px solid #ffc107; padding: 8px 12px; margin-bottom: 10px; border-radius: 4px; font-size: 0.86rem; color: inherit;">'
                             f'⚠️ <strong>{tr("badge_rsc_partial_abstract")}:</strong> {tr("rsc_abstract_notice")}'
@@ -1940,6 +2015,7 @@ with tab_step1:
                     st.session_state["literature_search_results"] = []
                     st.session_state["literature_mined_records"] = []
                     st.session_state["lit_search_offset"] = 0
+                    st.session_state["paper_search_offset"] = 0
                     st.toast(tr("mining_dataset_reset_toast"), icon="🗑️")
                     st.rerun()
 
@@ -2508,7 +2584,10 @@ with tab_step1:
                             st.session_state["last_extracted_notice"] = tr("suggested_additive_applied_toast", name=sugg.name, ceiling=hard_ceil)
                             st.rerun()
         else:
-            st.info(tr("no_pdf_uploaded_tip"))
+            if is_demo:
+                st.info(tr("no_pdf_uploaded_tip"))
+            else:
+                st.info(tr("no_pdf_uploaded_tip_custom"))
 
     if "bridged_additive_name" in st.session_state and st.session_state["bridged_additive_name"]:
         b_name = st.session_state.get("bridged_additive_name")
@@ -2848,20 +2927,21 @@ with tab_step2:
         target_elyte_clean = format_chem_formula(anchor.target_electrolyte or f"{anchor.target_salt_molarity:.1f} M {anchor.target_electrolyte_salt}")
 
         banner_smiles_html = (
-            f'<div style="font-size: 0.82rem; margin-top: 4px; word-break: break-all; color: inherit;">'
-            f'<strong>{tr("active_smiles_label")}:</strong> <code style="font-size: 0.80rem; background: rgba(128, 128, 128, 0.1); padding: 2px 6px; border-radius: 4px;">{anchor.smiles}</code>'
+            f'<div class="active-banner-smiles" style="font-size: 0.82rem; margin-top: 4px; color: inherit; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px;">'
+            f'<strong style="white-space: nowrap; flex-shrink: 0;">{tr("active_smiles_label")}:</strong> '
+            f'<code style="font-size: 0.80rem; background: rgba(128, 128, 128, 0.1); padding: 2px 6px; border-radius: 4px; word-break: break-all; overflow-wrap: anywhere;">{anchor.smiles}</code>'
             f'</div>'
         ) if anchor.smiles else ""
 
         st.markdown(f'<div class="section-title" style="margin-bottom: 8px;">{tr("sec_active_additive_overview")} &amp; {tr("active_formulation_label")}</div>', unsafe_allow_html=True)
 
         with st.container(border=True):
-            col_b_add, col_b_dropdown, col_b_parent, col_b_arrow, col_b_target = st.columns([1.30, 1.15, 1.10, 0.12, 1.25], vertical_alignment="center")
+            col_b_add, col_b_dropdown, col_b_transfer = st.columns([1.35, 1.25, 1.55], vertical_alignment="center")
             with col_b_add:
                 st.markdown(
                     f"""
-                    <div style="padding: 2px 0;">
-                        <div style="font-size: 1.18rem; font-weight: 700;">
+                    <div style="padding: 2px 0; min-width: 0;">
+                        <div style="font-size: 1.18rem; font-weight: 700; overflow-wrap: break-word;">
                             🧪 <strong>{anchor.additive_name}</strong>{formula_html}
                         </div>
                         {banner_smiles_html}
@@ -2871,7 +2951,7 @@ with tab_step2:
                 )
             with col_b_dropdown:
                 st.markdown(
-                    f'<div style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; color: #2ca02c; margin-bottom: 3px;">🎯 {tr("target_electrolyte")}</div>',
+                    f'<div class="active-banner-target-label" style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; color: #2ca02c; margin-bottom: 3px; white-space: nowrap;">🎯 {tr("target_electrolyte")}</div>',
                     unsafe_allow_html=True,
                 )
                 cur_step2_salt = st.session_state.get("step2_target_electrolyte_select") or st.session_state.get("selected_target_salt", anchor.target_electrolyte_salt or "Zn(OTf)2")
@@ -2889,27 +2969,19 @@ with tab_step2:
                     st.session_state["selected_target_salt"] = step2_target_salt
                     st.rerun()
 
-            with col_b_parent:
+            with col_b_transfer:
                 st.markdown(
                     f"""
-                    <div style="background: rgba(31, 119, 180, 0.1); border: 1px solid rgba(31, 119, 180, 0.3); border-radius: 6px; padding: 8px 12px; text-align: right; min-height: 52px; display: flex; flex-direction: column; justify-content: center;">
-                        <div style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; color: #1f77b4;">{tr("parent_electrolyte_label")}</div>
-                        <div style="font-size: 0.95rem; font-weight: 700; color: #1f77b4;">{parent_elyte_clean} <span style="font-size: 0.80rem; font-weight: 600; color: #1f77b4;">({anchor.published_concentration:.1f} mM)</span></div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-            with col_b_arrow:
-                st.markdown(
-                    '<div style="font-size: 1.3rem; text-align: center; color: #1f77b4; font-weight: bold;">➔</div>',
-                    unsafe_allow_html=True,
-                )
-            with col_b_target:
-                st.markdown(
-                    f"""
-                    <div style="background: rgba(44, 160, 44, 0.1); border: 1px solid rgba(44, 160, 44, 0.3); border-radius: 6px; padding: 8px 12px; text-align: left; min-height: 52px; display: flex; flex-direction: column; justify-content: center;">
-                        <div style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; color: #2ca02c;">{tr("target_electrolyte_label")}</div>
-                        <div style="font-size: 0.95rem; font-weight: 700; color: #2ca02c;">{target_elyte_clean} <span style="font-size: 0.80rem; font-weight: 600; color: #2ca02c;">(Factor: {anchor.scaling_factor:.2f}x)</span></div>
+                    <div class="active-banner-transfer-row" style="display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: nowrap;">
+                        <div class="active-banner-elyte-box active-banner-parent-box" style="width: fit-content; min-width: 150px; max-width: 240px; background: rgba(31, 119, 180, 0.1); border: 1px solid rgba(31, 119, 180, 0.3); border-radius: 6px; padding: 8px 12px; text-align: right; min-height: 52px; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box;">
+                            <div style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; white-space: nowrap; color: #1f77b4;">{tr("parent_electrolyte_label")}</div>
+                            <div style="font-size: 0.95rem; font-weight: 700; white-space: nowrap; color: #1f77b4;">{parent_elyte_clean} <span style="font-size: 0.80rem; font-weight: 600; color: #1f77b4;">({anchor.published_concentration:.1f} mM)</span></div>
+                        </div>
+                        <div class="active-banner-arrow" style="font-size: 1.3rem; text-align: center; flex-shrink: 0; padding: 0 2px; color: #1f77b4; font-weight: bold;">➔</div>
+                        <div class="active-banner-elyte-box active-banner-target-box" style="width: fit-content; min-width: 150px; max-width: 240px; background: rgba(44, 160, 44, 0.1); border: 1px solid rgba(44, 160, 44, 0.3); border-radius: 6px; padding: 8px 12px; text-align: left; min-height: 52px; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box;">
+                            <div style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; white-space: nowrap; color: #2ca02c;">{tr("target_electrolyte_label")}</div>
+                            <div style="font-size: 0.95rem; font-weight: 700; white-space: nowrap; color: #2ca02c;">{target_elyte_clean} <span style="font-size: 0.80rem; font-weight: 600; color: #2ca02c;">(Factor: {anchor.scaling_factor:.2f}x)</span></div>
+                        </div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -3040,16 +3112,177 @@ with tab_step2:
                         hover_data=[f"{anchor.additive_name} Conc (mM)", f"{format_chem_formula(anchor.target_electrolyte_salt)} Salt Conc (M)"],
                     )
 
-                fig_doe.update_traces(textposition="bottom center")
+                # Collision-aware label placement for Reference star and planned sample points
+                ref_x = float(anchor.shifted_anchor_conc)
+                ref_y = float(CANONICAL_ELECTROLYTE_PROFILES[selected_target_salt]["default_molarity"])
+                x_col_name = f"{anchor.additive_name} Conc (mM)"
+                y_col_name = f"{format_chem_formula(anchor.target_electrolyte_salt)} Salt Conc (M)"
 
-                # Add Anchor Point Marker (kept at top center so it does not collide with sample labels below)
+                sample_xs = [float(v) for v in pts_df[x_col_name].tolist()] if not pts_df.empty else [ref_x]
+                sample_ys = [float(v) for v in pts_df[y_col_name].tolist()] if not pts_df.empty else [ref_y]
+                all_x_vals = sample_xs + [ref_x] + ([float(anchor.solubility_ceiling_mM)] if anchor.solubility_ceiling_mM else [])
+                all_y_vals = sample_ys + [ref_y]
+
+                x_min_val, x_max_val = min(all_x_vals), max(all_x_vals)
+                y_min_val, y_max_val = min(all_y_vals), max(all_y_vals)
+                x_span = max(x_max_val - x_min_val, 1e-6)
+                y_span = max(y_max_val - y_min_val, 1e-6)
+
+                x_max_pts = max(sample_xs + [ref_x])
+                x_span_pts = max(x_max_pts - min(sample_xs + [ref_x]), 1e-6)
+                near_right_edge = ((x_max_pts - ref_x) / x_span_pts <= 0.15) if x_max_pts > min(sample_xs + [ref_x]) else False
+                near_esol_cap = (
+                    anchor.solubility_ceiling_mM is not None
+                    and abs(float(anchor.solubility_ceiling_mM) - ref_x) / max(float(anchor.solubility_ceiling_mM), x_span, 1e-6) <= 0.15
+                )
+                ref_text_pos = "middle left" if (near_right_edge or near_esol_cap) else "middle right"
+
+                # Map plot data domain to virtual screen pixels (W=420, H=300; screen y increases downward)
+                plot_w_px, plot_h_px = 420.0, 300.0
+                x_pad_low = x_min_val - 0.14 * x_span
+                x_pad_high = x_max_val + 0.18 * x_span
+                y_pad_low = y_min_val - 0.16 * y_span
+                y_pad_high = y_max_val + 0.16 * y_span
+                x_dom_span = max(x_pad_high - x_pad_low, 1e-6)
+                y_dom_span = max(y_pad_high - y_pad_low, 1e-6)
+
+                def _to_screen_px(xv: float, yv: float):
+                    sx = ((float(xv) - x_pad_low) / x_dom_span) * plot_w_px
+                    sy = (1.0 - (float(yv) - y_pad_low) / y_dom_span) * plot_h_px
+                    return sx, sy
+
+                ref_sx, ref_sy = _to_screen_px(ref_x, ref_y)
+                ref_lbl_sx = ref_sx + (-54.0 if ref_text_pos == "middle left" else 54.0)
+                ref_lbl_sy = ref_sy
+
+                # Bounding boxes: (center_x, center_y, half_width, half_height)
+                placed_label_boxes = [(ref_lbl_sx, ref_lbl_sy, 50.0, 12.0)]
+                all_marker_px = [_to_screen_px(x, y) for x, y in zip(sample_xs, sample_ys)] + [(ref_sx, ref_sy)]
+
+                # 2-tier radial pixel offset candidates: (ax, ay, use_leader, pos_fallback)
+                # Note: in Plotly axref="pixel"/ayref="pixel", ay > 0 is downward on screen, ay < 0 is upward
+                pixel_offset_candidates = [
+                    # Tier 1: Close compass offsets (no leader arrow needed unless clustered)
+                    (0, 20, False, "bottom center"),
+                    (0, -20, False, "top center"),
+                    (28, 0, False, "middle right"),
+                    (-28, 0, False, "middle left"),
+                    (24, 17, False, "bottom right"),
+                    (-24, -17, False, "top left"),
+                    (24, -17, False, "top right"),
+                    (-24, 17, False, "bottom left"),
+                    # Tier 2: Cluster fan-out offsets with crisp leader line (separates S01/S04/S05 cleanly)
+                    (-38, -26, True, "top left"),
+                    (38, -26, True, "top right"),
+                    (38, 26, True, "bottom right"),
+                    (-38, 26, True, "bottom left"),
+                    (0, -38, True, "top center"),
+                    (0, 38, True, "bottom center"),
+                    (48, 0, True, "middle right"),
+                    (-48, 0, True, "middle left"),
+                    # Tier 3: Wide fan-out for 4+ tightly clustered points
+                    (-52, -36, True, "top left"),
+                    (52, -36, True, "top right"),
+                    (52, 36, True, "bottom right"),
+                    (-52, 36, True, "bottom left"),
+                ]
+
+                placed_cluster_pts = []
+                for tr_obj in fig_doe.data:
+                    tr_positions = []
+                    tr_xs = list(tr_obj.x) if tr_obj.x is not None else []
+                    tr_ys = list(tr_obj.y) if tr_obj.y is not None else []
+                    tr_texts = list(tr_obj.text) if getattr(tr_obj, "text", None) is not None else [f"S{i+1:02d}" for i in range(len(tr_xs))]
+                    # Render markers only on the scatter trace; annotations handle non-overlapping labels
+                    tr_obj.mode = "markers"
+                    tr_obj.marker.size = 10
+                    tr_obj.marker.line = dict(width=1.2, color="#1e293b")
+
+                    for px_raw, py_raw, lbl_val in zip(tr_xs, tr_ys, tr_texts):
+                        psx, psy = _to_screen_px(float(px_raw), float(py_raw))
+                        lbl_str = str(lbl_val)
+                        lbl_hw = max(21.0, len(lbl_str) * 4.5 + 6.0)
+                        lbl_hh = 11.0
+
+                        # Count how many already-placed points sit within 24px of this point (tight cluster like S01/S04/S05)
+                        cluster_neighbors = sum(
+                            1 for (prev_sx, prev_sy) in placed_cluster_pts
+                            if ((psx - prev_sx) ** 2 + (psy - prev_sy) ** 2) ** 0.5 < 24.0
+                        )
+
+                        best_cand = pixel_offset_candidates[0]
+                        best_cost = float("inf")
+                        for idx_cand, cand in enumerate(pixel_offset_candidates):
+                            ax_c, ay_c, use_leader, pos_fb = cand
+                            lx, ly = psx + ax_c, psy + ay_c
+                            # If this point is the 2nd+ member of a tight cluster, slightly prefer Tier 2 fan-out slots
+                            if cluster_neighbors >= 1 and not use_leader:
+                                cost = 12.0 + idx_cand * 0.2
+                            else:
+                                cost = idx_cand * 0.35
+
+                            # 1. Bounding-box collision penalty against all placed labels (including Reference)
+                            for (bx, by, bhw, bhh) in placed_label_boxes:
+                                overlap_x = (lbl_hw + bhw + 6.0) - abs(lx - bx)
+                                overlap_y = (lbl_hh + bhh + 5.0) - abs(ly - by)
+                                if overlap_x > 0 and overlap_y > 0:
+                                    cost += overlap_x * overlap_y * 50.0 + 2000.0
+
+                            # 2. Collision penalty against all point marker dots
+                            for (msx, msy) in all_marker_px:
+                                overlap_mx = (lbl_hw + 9.0) - abs(lx - msx)
+                                overlap_my = (lbl_hh + 9.0) - abs(ly - msy)
+                                if overlap_mx > 0 and overlap_my > 0:
+                                    cost += overlap_mx * overlap_my * 35.0 + 800.0
+
+                            # 3. Plot boundary penalty so labels stay well inside the axes
+                            if lx - lbl_hw < 8.0:
+                                cost += (8.0 - (lx - lbl_hw)) * 40.0
+                            if lx + lbl_hw > plot_w_px - 8.0:
+                                cost += ((lx + lbl_hw) - (plot_w_px - 8.0)) * 40.0
+                            if ly - lbl_hh < 8.0:
+                                cost += (8.0 - (ly - lbl_hh)) * 40.0
+                            if ly + lbl_hh > plot_h_px - 8.0:
+                                cost += ((ly + lbl_hh) - (plot_h_px - 8.0)) * 40.0
+
+                            if cost < best_cost:
+                                best_cost = cost
+                                best_cand = cand
+
+                        sel_ax, sel_ay, sel_leader, sel_pos_fb = best_cand
+                        tr_positions.append(sel_pos_fb)
+                        placed_label_boxes.append((psx + sel_ax, psy + sel_ay, lbl_hw, lbl_hh))
+                        placed_cluster_pts.append((psx, psy))
+                        show_line = bool(sel_leader or cluster_neighbors >= 1)
+
+                        fig_doe.add_annotation(
+                            x=float(px_raw),
+                            y=float(py_raw),
+                            xref="x",
+                            yref="y",
+                            text=f"<b>{lbl_str}</b>",
+                            showarrow=True,
+                            arrowhead=0,
+                            arrowwidth=1.2 if show_line else 1.0,
+                            arrowcolor="rgba(100, 116, 139, 0.75)" if show_line else "rgba(0, 0, 0, 0)",
+                            ax=sel_ax,
+                            ay=sel_ay,
+                            axref="pixel",
+                            ayref="pixel",
+                            font=dict(size=11, color="#0f172a"),
+                            bgcolor="rgba(255, 255, 255, 0.85)",
+                            borderpad=1,
+                        )
+                    tr_obj.textposition = tr_positions if len(tr_positions) > 1 else (tr_positions[0] if tr_positions else "bottom center")
+
+                # Add Anchor Point Marker with collision-aware horizontal label placement
                 fig_doe.add_trace(go.Scatter(
                     x=[anchor.shifted_anchor_conc],
                     y=[CANONICAL_ELECTROLYTE_PROFILES[selected_target_salt]["default_molarity"]],
                     mode="markers+text",
                     name="Reference Center",
-                    text=["REFERENCE"],
-                    textposition="top center",
+                    text=["  ★ REFERENCE"],
+                    textposition=ref_text_pos,
                     marker=dict(symbol="star", size=16, color="#d62728", line=dict(width=1.5, color="black")),
                 ))
 
@@ -3074,8 +3307,8 @@ with tab_step2:
                         yanchor="top",
                         font=dict(size=14),
                     ),
-                    xaxis=dict(title=dict(standoff=10), automargin=True),
-                    yaxis=dict(automargin=True),
+                    xaxis=dict(title=dict(standoff=10), range=[x_pad_low, x_pad_high], automargin=True),
+                    yaxis=dict(range=[y_pad_low, y_pad_high], automargin=True),
                     legend=dict(
                         orientation="h",
                         yanchor="top",
@@ -4508,7 +4741,10 @@ if tab_summary is not None:
                 out_dir = Path(campaign.output_dir)
 
                 with dl_c1:
-                    st.markdown(f"**{tr('sec_export_campaign')}**")
+                    st.markdown(
+                        f'<div class="dl-center-col-header" style="min-height: 2.75rem; display: flex; align-items: flex-end; font-weight: 700; margin-bottom: 6px; line-height: 1.25;">{tr("sec_export_campaign")}</div>',
+                        unsafe_allow_html=True,
+                    )
                     st.download_button(
                         tr("btn_dl_campaign_xlsx"),
                         data=cached_generate_campaign_summary_xlsx(campaign),
@@ -4547,7 +4783,10 @@ if tab_summary is not None:
                     )
 
                 with dl_c2:
-                    st.markdown(f"**{tr('sec_export_protocol')}**")
+                    st.markdown(
+                        f'<div class="dl-center-col-header" style="min-height: 2.75rem; display: flex; align-items: flex-end; font-weight: 700; margin-bottom: 6px; line-height: 1.25;">{tr("sec_export_protocol")}</div>',
+                        unsafe_allow_html=True,
+                    )
                     st.download_button(
                         tr("btn_dl_dispensing_xlsx"),
                         data=cached_generate_dispensing_schedule_xlsx(campaign.dispensing_schedule),
@@ -4597,7 +4836,10 @@ if tab_summary is not None:
                         )
 
                 with dl_c3:
-                    st.markdown(f"**{tr('sec_export_formulation')}**")
+                    st.markdown(
+                        f'<div class="dl-center-col-header" style="min-height: 2.75rem; display: flex; align-items: flex-end; font-weight: 700; margin-bottom: 6px; line-height: 1.25;">{tr("sec_export_formulation")}</div>',
+                        unsafe_allow_html=True,
+                    )
                     st.download_button(
                         tr("btn_dl_doe_xlsx"),
                         data=cached_generate_doe_plan_xlsx(campaign.formulation_plan),
@@ -4647,7 +4889,10 @@ if tab_summary is not None:
                         )
 
                 with dl_c4:
-                    st.markdown(f"**{tr('sec_export_interactive')}**")
+                    st.markdown(
+                        f'<div class="dl-center-col-header" style="min-height: 2.75rem; display: flex; align-items: flex-end; font-weight: 700; margin-bottom: 6px; line-height: 1.25;">{tr("sec_export_interactive")}</div>',
+                        unsafe_allow_html=True,
+                    )
                     if best and best.analysis_report and best_report_html:
                         st.download_button(
                             tr("btn_dl_html_dashboard"),

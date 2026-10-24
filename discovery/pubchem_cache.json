@@ -72,5 +72,6 @@
   "graphene oxide": "C",
   "manganese": "[Mn]",
   "hepes": "O=S(=O)(O)CCN1CCN(CCO)CC1",
-  "stevia": "C=C1C[C@@]23CC[C@H]4[C@@](C)(CCC[C@@]4(C)C(=O)O[C@@H]4O[C@H](CO)[C@@H](O)[C@H](O)[C@H]4O)[C@@H]2CC[C@]1(O[C@@H]1O[C@H](CO)[C@@H](O)[C@H](O[C@@H]2O[C@H](CO)[C@@H](O)[C@H](O)[C@H]2O)[C@H]1O[C@@H]1O[C@H](CO)[C@@H](O)[C@H](O)[C@H]1O)C3"
+  "stevia": "C=C1C[C@@]23CC[C@H]4[C@@](C)(CCC[C@@]4(C)C(=O)O[C@@H]4O[C@H](CO)[C@@H](O)[C@H](O)[C@H]4O)[C@@H]2CC[C@]1(O[C@@H]1O[C@H](CO)[C@@H](O)[C@H](O[C@@H]2O[C@H](CO)[C@@H](O)[C@H](O)[C@H]2O)[C@H]1O[C@@H]1O[C@H](CO)[C@@H](O)[C@H](O)[C@H]1O)C3",
+  "kaolinite": "O=[Si]([O-])O[Si](=O)[O-].[Al+3].[Al+3].[OH-].[OH-].[OH-].[OH-]"
 }

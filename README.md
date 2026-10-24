@@ -16,10 +16,11 @@ An interactive research platform designed to help **aqueous zinc-ion battery (ZI
 
 You do not need any programming experience to use this platform. Everything runs through an interactive web interface organized into five tabs:
 
-* **Tab 1 — Automated Closed-Loop Run (Demo Mode):**  
-  Click **"Run Autonomous Campaign"** to watch a complete demonstration of an automated research workflow from start to finish. It searches for an additive, designs an experimental matrix, calculates robotic pipetting volumes, analyzes the resulting cell cycling data, and identifies the best electrolyte recipe—all in one click, without needing your own files or API keys.
-* **Tab 2 — Literature & Additive Discovery (Step 1):**  
-  Search open-access academic papers or upload a PDF manuscript to automatically extract tested electrolyte additives, optimal concentrations, base salts, and cycling performance. The app then screens chemically similar candidate molecules and estimates their water solubility limits so you know what can actually be dissolved in the lab.
+* **Tab 1 — Automated Experiment Run (Demo Mode):**  
+  Click **`🚀 Run Autonomous Optimization Experiment`** to watch a complete demonstration of an automated research workflow from start to finish. It transfers a literature additive, checks solubility limits, designs a multi-round experimental matrix, calculates robotic pipetting volumes, analyzes cell cycling data, and identifies the winning electrolyte recipe—all in one click, **100% offline** without needing your own files or API keys.
+* **Tab 2 — Literature Search & Additive Finder (Step 1):**  
+  Search peer-reviewed academic papers (via Semantic Scholar & OpenAlex) or upload PDF manuscripts to automatically extract tested electrolyte additives, optimal concentrations, baseline zinc salts, and protective mechanisms. The app then screens chemically similar candidate molecules and computes their water solubility limits via RDKit so you know what can actually be dissolved in the lab.  
+  > 💡 **Strongly Recommended for Step 1 — Use a Free Google Gemini API Key:** While the Tab 1 closed-loop optimization simulation (`🚀 Run Autonomous Optimization Experiment`), RDKit solubility/similarity calculations, DoE formulation planning, OT-2 pipetting schedules, and Step 3 cycler data analysis all work **100% offline**, **getting a free Google Gemini API key is strongly recommended for Step 1 Literature Search & PDF Extraction**. Rule-based offline regex heuristics are only a basic fallback and cannot reliably extract baseline electrolytes, optimal concentrations, and mechanisms from arbitrary research papers. With a free Gemini API key ([get one in under 1 minute at Google AI Studio](https://aistudio.google.com/app/apikey)), the platform uses 5-paper batching on `gemini-3.5-flash-lite` / `gemini-3.1-flash-lite` to accurately analyze **up to 2,500 papers per day for free** (see the [1-Minute Setup Guide](#-getting-a-free-google-gemini-api-key-in-under-1-minute-strongly-recommended-for-step-1) below).
 * **Tab 3 — Electrolyte Formulation & Pipetting Plan (Step 2):**  
   Choose your target zinc salt (such as $\text{ZnSO}_4$, $\text{Zn(OTf)}_2$, or $\text{ZnCl}_2$) and generate a balanced experimental grid (Design of Experiments) comparing additive concentration against salt molarity. The app automatically calculates exact stock-solution and water pipetting volumes ($\mu\text{L}$) for each vial and can export a ready-to-run schedule for an **Opentrons OT-2** liquid-handling robot.
 * **Tab 4 — Battery Cycler Data Analysis (Step 3):**  
@@ -77,8 +78,52 @@ Wet-lab researchers rightly want to know that a software tool is grounded in rea
    The experimental planner adjusts additive exploration windows based on the specific zinc salt you select ($\text{ZnSO}_4$, $\text{Zn(OTf)}_2$, $\text{Zn(ClO}_4)_2$, $\text{Zn(TFSI)}_2$, $\text{ZnCl}_2$, or $\text{Zn(CH}_3\text{COO)}_2$), caps concentrations at $80\%$ of the aqueous solubility ceiling, and automatically reduces Opentrons OT-2 pipetting speeds by $50\%$ when dispensing high-viscosity electrolytes like $\text{ZnCl}_2$ or $\text{Zn(TFSI)}_2$.
 4. **Validated Battery Math & True Failure Detection (Built on `cellpy` & NREL's `ampworks`):**  
    Cycler file decoding and differential capacity analysis ($dQ/dV$ and $dV/dQ$) build upon established open-source battery libraries (`cellpy` and NREL's `ampworks`). In addition, the app solves a common problem in $\text{Zn//Zn}$ symmetric cell testing: when a cell short-circuits from dendrites (voltage drops near $0\text{ mV}$), a cycler can keep recording data for hundreds of hours and falsely inflate the reported lifespan. This app automatically detects both **dendrite short-circuits** ($< 5\text{ mV}$) and **byproduct passivation spikes** ($\ge 1.0\text{ V}$), trims initial open-circuit rest periods so $t=0$ starts when current actually flows, and reports **healthy active cycling metrics** separately from total test duration.
-5. **Verified by 274 Automated Quality Checks:**  
+5. **Verified by 291+ Automated Quality Checks:**  
    Every calculation in the platform—from unit conversions and pipetting dilutions to Coulombic efficiency, energy efficiency integration, and failure detection—is verified by an automated test suite (`tests/`) to ensure consistent, reproducible numbers.
+
+---
+
+## 🎛️ Plain-Language Guide to Sidebar & Experiment Controls
+
+Whether you are a wet-lab battery student or exploring the platform for the first time, here is what every control in the left-hand **MAP Control Center** sidebar does in everyday language:
+
+### 1. Operating Mode
+* **`Demo Mode (Pre-loaded Literature Data)`:** Opens all **5 tabs**, pre-loaded with benchmark zinc-ion battery literature data, curated additives, and simulated multi-round cycling campaigns. In this mode, all sidebar experiment controls are unlocked so you can tweak the target salt, additive, or optimization settings and click **`🚀 Run Autonomous Optimization Experiment`** in Tab 1 to watch a complete closed-loop self-driving lab simulation and export full campaign reports (Tab 5).
+* **`Custom Experiment Mode`:** Switches the interface to a streamlined **3-tab wet-lab workspace** (*Step 1: Literature Search & Additive Finder*, *Step 2: Electrolyte Formulation & Experiment Planning*, and *Step 3: Battery Cycling & Failure Analysis*). Pre-loaded demo data is hidden so you can start with a clean slate for your own searched papers, uploaded PDFs, custom SMILES molecules, and raw cycler files.
+
+### 2. Knowledge Transfer & Formulation Setup
+In battery research, an additive is often discovered in a standard electrolyte (like $2\text{ M }\text{ZnSO}_4$), but you may want to test it in a different electrolyte system. Simply copying the exact same concentration rarely works because different salts change how water molecules and zinc ions behave.
+* **`Target Electrolyte to Optimize`:** Choose which aqueous zinc salt you want to formulate in the lab:
+  * **$\text{ZnSO}_4$** (*Zinc Sulfate, default $2.0\text{ M}$, range $1.0\text{–}3.0\text{ M}$*) — The standard, low-cost baseline salt; prone to basic zinc sulfate byproduct passivation.
+  * **$\text{Zn(OTf)}_2$** (*Zinc Triflate, default $1.0\text{ M}$, range $0.5\text{–}2.5\text{ M}$*) — Bulky fluorinated anions that help form protective $\text{ZnF}_2$-rich surface layers, typically needing ~30% less organic additive than $\text{ZnSO}_4$.
+  * **$\text{Zn(ClO}_4)_2$** (*Zinc Perchlorate, default $2.0\text{ M}$, range $1.0\text{–}3.5\text{ M}$*) — Weakly coordinating anions for fast $\text{Zn}^{2+}$ desolvation and high-rate/low-temperature performance.
+  * **$\text{Zn(TFSI)}_2$** (*Water-in-Salt / WiSE, default $4.0\text{ M}$, range $2.0\text{–}7.5\text{ M}$*) — Highly concentrated fluorinated electrolyte where most water is already bound to salt ions, requiring lower additive dosages.
+  * **$\text{ZnCl}_2$** (*Zinc Chloride, default $5.0\text{ M}$, range $2.0\text{–}10.0\text{ M}$*) — Concentrated, viscous chloride electrolyte that compresses the electrical double layer and often requires higher additive concentrations.
+  * **$\text{Zn(CH}_3\text{COO)}_2$** (*Zinc Acetate, default $1.0\text{ M}$, range $0.5\text{–}2.5\text{ M}$*) — Mild pH-buffered electrolyte ($\text{pH} \approx 5\text{–}6$) that naturally suppresses hydrogen gas evolution.
+* **`Additive to Test (from Literature)`:** Pick a benchmark additive from the curated pool (such as *Trehalose*, *TEABr*, *D-Sorbitol*, *Thiourea*, or *Glucose*) to optimize in Demo Mode.
+* **`Reported Additive Conc (mM)` & `Literature Baseline Electrolyte`:** Enter the optimal concentration (e.g., $15.0\text{ mM}$) and original salt (e.g., `2 M ZnSO₄`) reported in the source paper.  
+  * **Why Concentration Scaling + the 80% Delaney ESOL Cap Matter:** First, the platform scales the reported concentration up or down based on the chemical differences between the paper's baseline salt and your chosen target salt. Second, it calculates the molecule's theoretical water solubility using **RDKit's Delaney ESOL equation** and enforces a strict **80% solubility safety ceiling**. Because concentrated zinc salts leave less "free water" available to dissolve organic molecules, staying below 80% saturation prevents your additive from precipitating or crystallizing out of solution during battery cycling.
+
+### 3. Automated Optimization & Active Learning
+* **`Optimization Rounds` (`1` to `4`):**
+  * **`1` Round (Single Screening Pass):** Generates a single initial batch of electrolyte recipes to screen across your safe concentration window.
+  * **`2` to `4` Rounds (Closed-Loop Active Learning):** Runs an iterative self-driving loop. **Round 1** screens an initial spread of recipes; then **Rounds 2, 3, and 4** analyze how long each battery actually lasted and its voltage loss (overpotential), automatically proposing smarter follow-up recipes to zero in on the best-performing formulation.
+* **`Experimental Design Method (DoE)` — How Round 1 Picks Recipes:**
+  * **`Latin Hypercube (LHS — Uniform Coverage)`:** Divides the entire safe range of additive concentration ($\text{mM}$) and salt concentration ($\text{M}$) into an even chessboard-like grid and places samples so that no two vials share the same row or column. **When to choose LHS:** Best when you are exploring a new additive or salt for the first time and want broad, even, space-filling coverage across the whole concentration map with any number of vials (`3–12`).
+  * **`Central Composite (CCD — Surface Response)`:** Builds a structured geometric pattern anchored right around your scaled literature recipe—testing the **4 corners** of the box (factorial points), **4 extreme edges** along the axes (star/axial points), and **repeated center points** right at the middle. **When to choose CCD:** Best when you already have a trusted literature concentration and want to map curved cause-and-effect relationships (for example, when too little additive fails to stop dendrites, while too much increases viscosity and voltage polarization) to pinpoint the exact peak.
+* **`Initial Formulations (Batch 1)` (`3–12`) vs. `Follow-up Formulations per Round` (`1–6`):**
+  * **`Initial Formulations (Batch 1)` (`3–12`):** How many electrolyte vials are prepared and tested in Round 1 to build your initial map.
+  * **`Follow-up Formulations per Round` (`1–6`):** *(Unlocked when Optimization Rounds $\ge 2$)* How many new AI-guided electrolyte vials are mixed in each follow-up round based on what the algorithm learned from the previous round's cycling data.
+* **`Active Learning Optimization Focus`:** *(Unlocked when Optimization Rounds $\ge 2$)* Controls how the algorithm chooses follow-up recipes after seeing which Round 1 vial performed best:
+  * **`Fastest Improvement (Near Top Performer)`:** Takes bolder steps outward in the direction of the winning recipe to quickly see if higher or lower concentrations unlock even bigger gains.
+  * **`Refinement (Fill High-Performing Region)`:** Zooms in tightly around the current best recipe with small concentration steps to fine-tune the exact sweet spot.
+  * **`Balanced (Explore & Refine)`:** Splits follow-up vials between testing unexplored gaps in the middle and pushing slightly past the current best performer.
+
+### 4. Hardware & Liquid Handling
+* **`Robotic Liquid Handler Rack` (`24-vial rack` vs. `96-well plate`):**
+  * **`24-vial rack` (4 rows `A–D` × 6 columns `1–6`):** Standard glass scintillation vials typically used for mixing larger electrolyte batches ($1,000\text{–}5,000\ \mu\text{L}$) for coin-cell or pouch-cell assembly.
+  * **`96-well plate` (8 rows `A–H` × 12 columns `1–12`):** High-throughput microplate layout suited for rapid, small-volume screening ($100\text{–}300\ \mu\text{L}$ per well).
+* **`Target Electrolyte Volume per Vial (µL)` (`50` to `10,000 µL`):** The final liquid volume you want in each vial or well (defaults to $2,000\ \mu\text{L}$ for a 24-vial rack or $200\ \mu\text{L}$ for a 96-well plate). The platform automatically calculates exact microliter ($\mu\text{L}$) transfers of salt stock, additive stock, and DI water so every vial adds up to this exact target volume.
 
 ---
 
@@ -119,12 +164,18 @@ cd zinc-ion-battery-map
   ```
   The app will automatically open in your web browser at `http://localhost:8501`.
 
-### Step 4 (Optional): Add a Gemini API Key for Live Paper Reading
-All offline features—including **Demo Mode**, **RDKit molecular screening**, **Design of Experiments**, **Opentrons pipetting schedules**, and **all Cycler Data Analysis & Report Exports**—work immediately **without** any API key.  
-If you want to use live AI extraction on new PDF papers in Tab 2, you can either paste a free [Google Gemini API key](https://aistudio.google.com/) directly in the app's sidebar, or copy `.env.example` to a new file named `.env` and add your key there:
-```text
-GEMINI_API_KEY=your_api_key_here
-```
+### 🔑 Getting a Free Google Gemini API Key in Under 1 Minute (Strongly Recommended for Step 1)
+> [!IMPORTANT]
+> **What works 100% offline vs. what needs an API key:**  
+> The Tab 1 closed-loop optimization simulation (`🚀 Run Autonomous Optimization Experiment`), RDKit solubility & molecular similarity calculations, DoE formulation planning, Opentrons OT-2 pipetting schedules, and all Step 3 battery cycler data analyses & report exports work **100% offline** with zero API keys required.  
+> However, **getting a free Google Gemini API key is strongly recommended for Step 1 Literature Search & PDF Extraction**. Without an API key, Step 1 falls back to basic rule-based offline regex heuristics, which cannot reliably extract baseline electrolytes, optimal concentrations, or mechanisms from arbitrary scientific papers.
+
+Anyone can get a free Gemini API key in **under 1 minute** (no credit card required):
+1. **Generate a Free Key:** Visit **[Google AI Studio (`https://aistudio.google.com/app/apikey`)](https://aistudio.google.com/app/apikey)**, sign in with any Google account, and click **"Create API key"**.
+2. **Open the Key Popover in Step 1:** In the app, go to **Step 1: Literature Search & Additive Finder** and click the **`🔑 Configure Gemini API Key`** (`🔑 Gemini API Key`) popover button next to the search bar.
+3. **Paste & Save:** Paste your key (`AIzaSy...`), keep the default **`gemini-3.5-flash-lite`** (or **`gemini-3.1-flash-lite`**) model selected, and click **`💾 Save Key`**. Because the app batches **5 papers per API request**, a single free-tier key (500 requests/day) supports analyzing **up to 2,500 papers per day for free**!
+
+*(Optional for local installations: You can also save your key permanently on your own computer by copying `.env.example` to `.env` and setting `GEMINI_API_KEY=your_api_key_here`.)*
 
 ---
 

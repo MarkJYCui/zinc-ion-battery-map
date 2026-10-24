@@ -466,6 +466,8 @@ CUSTOM_CSS = """
         margin-right: 6px;
         margin-bottom: 4px;
         color: inherit !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
     }
     .badge-teal { background-color: rgba(0, 168, 150, 0.18) !important; color: #00A896 !important; border: 1px solid rgba(0, 168, 150, 0.45) !important; }
     .badge-blue { background-color: rgba(30, 144, 255, 0.18) !important; color: #1E90FF !important; border: 1px solid rgba(30, 144, 255, 0.45) !important; }
@@ -870,16 +872,29 @@ CUSTOM_CSS = """
 
     /* Step 2 Candidate Card Deck: Responsive Height and Button Alignment */
     .candidate-card-deck-box {
-        min-height: 165px !important;
-        height: auto !important;
-        max-height: 215px !important;
+        height: 205px !important;
+        min-height: 205px !important;
+        max-height: 205px !important;
         overflow-y: auto !important;
         display: flex !important;
         flex-direction: column !important;
-        justify-content: flex-start !important;
+        justify-content: space-between !important;
         box-sizing: border-box !important;
         padding: 10px 12px !important;
         margin-bottom: 8px !important;
+    }
+    .candidate-card-deck-box .badge-tag {
+        margin-right: 0 !important;
+        margin-bottom: 0 !important;
+        white-space: nowrap !important;
+        flex-shrink: 0 !important;
+    }
+    .candidate-card-clamp {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     div[class*="st-key-btn_formulate_t1_"] button,
     div[class*="st-key-btn_formulate_t2_"] button {
@@ -892,6 +907,109 @@ CUSTOM_CSS = """
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
+    }
+
+    /* Step 2 Active Additive & Electrolyte System Banner (13" and 31" Responsive Layout) */
+    .active-banner-transfer-row {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: flex-end !important;
+        gap: 8px !important;
+        flex-wrap: nowrap !important;
+        width: 100% !important;
+    }
+    .active-banner-elyte-box {
+        width: fit-content !important;
+        min-width: 150px !important;
+        max-width: 240px !important;
+        min-height: 52px !important;
+        padding: 8px 12px !important;
+        border-radius: 6px !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+        box-sizing: border-box !important;
+    }
+    @media (max-width: 1440px) {
+        .active-banner-elyte-box {
+            min-width: 140px !important;
+            max-width: 220px !important;
+            padding: 6px 10px !important;
+        }
+    }
+
+    /* Tab 5 Download Center: Column Header & Button Row Alignment across 13" and 31" screens */
+    .dl-center-col-header {
+        min-height: 2.75rem !important;
+        display: flex !important;
+        align-items: flex-end !important;
+        font-weight: 700 !important;
+        line-height: 1.25 !important;
+        margin-bottom: 6px !important;
+    }
+    div[class*="st-key-tab5_btn_dl_"] button,
+    div[class*="st-key-tab5_btn_dl_"] [data-testid="stDownloadButton"] > button {
+        min-height: 52px !important;
+        height: auto !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        text-align: center !important;
+        line-height: 1.25 !important;
+        padding: 6px 10px !important;
+        white-space: normal !important;
+        box-sizing: border-box !important;
+    }
+    div[class*="st-key-tab5_btn_dl_"] button p,
+    div[class*="st-key-tab5_btn_dl_"] button div[data-testid="stMarkdownContainer"] {
+        margin: 0 !important;
+        line-height: 1.25 !important;
+        text-align: center !important;
+        white-space: normal !important;
+    }
+
+    /* Tab 1 Run Autonomous Optimization Experiment Button & Setup Text Horizontal Alignment */
+    .st-key-tab1_run_action_row div[data-testid="stHorizontalBlock"] {
+        align-items: center !important;
+    }
+    .st-key-tab1_run_action_row div[data-testid="stColumn"] {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: center !important;
+    }
+    .st-key-tab1_run_action_row div[data-testid="stElementContainer"],
+    .st-key-tab1_run_action_row div[data-testid="stMarkdown"],
+    .st-key-tab1_run_action_row div[data-testid="stMarkdownContainer"],
+    .st-key-tab1_run_action_row .stButton {
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+    }
+    .st-key-btn_tab1_run_campaign button {
+        min-height: 44px !important;
+        height: auto !important;
+        padding: 8px 16px !important;
+        margin: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+    .st-key-btn_tab1_run_campaign button p,
+    .st-key-btn_tab1_run_campaign button div[data-testid="stMarkdownContainer"] {
+        font-size: 1.0rem !important;
+        line-height: 1.35 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .tab1-experiment-setup-info {
+        font-size: 1.0rem !important;
+        line-height: 1.35 !important;
+        min-height: 44px !important;
+        display: flex !important;
+        align-items: center !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
 
     /* Prevent SVG legend clipPath from truncating legend labels in Plotly charts */

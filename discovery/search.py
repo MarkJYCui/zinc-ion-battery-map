@@ -391,7 +391,7 @@ OFFLINE_SAMPLE_PAPERS = [
         doi="10.1021/acsenergylett.3c00456",
         abstract=(
             "Parasitic reactions including the hydrogen evolution reaction and zinc corrosion are major bottlenecks for aqueous zinc batteries. "
-            "In this study, we report that 20 mM glucose regulates the Zn²⁺ hydration structure and inhibits dendrite formation, "
+            "In this study, we report that 20 mM glucose in 2 M ZnSO4 baseline electrolyte regulates the Zn²⁺ hydration structure and inhibits dendrite formation, "
             "enabling over 1500 hours of stable cycling at 1 mA cm-2."
         ),
         open_access_pdf_url="https://doi.org/10.1021/acsenergylett.3c00456"
@@ -675,14 +675,22 @@ OFFLINE_SAMPLE_PAPERS = [
 ]
 
 
-def get_offline_sample_papers(query: str = "", limit: int = 25, sort: str = "relevance") -> List[PaperMetadata]:
+def get_offline_sample_papers(
+    query: str = "",
+    limit: int = 25,
+    sort: str = "relevance",
+    offset: int = 0,
+) -> List[PaperMetadata]:
     """
-    Retrieve or synthesize up to `limit` realistic peer-reviewed domain papers for offline SDL operation.
-    Ranks papers matching `query` keywords first, sorts according to `sort`, and ensures standard scientific notation.
+    Retrieve or synthesize up to `offset + limit` realistic peer-reviewed domain papers for offline SDL operation.
+    Ranks papers matching `query` keywords first, sorts according to `sort`, and slices `[offset : offset + limit]`.
     """
     pool = list(OFFLINE_SAMPLE_PAPERS)
+    safe_offset = max(0, int(offset or 0))
+    safe_limit = max(0, int(limit or 25))
+    target_total = safe_offset + safe_limit
 
-    if limit > len(pool):
+    if target_total > len(pool):
         salts = ["1 M Zn(OTf)2", "2 M Zn(ClO4)2", "1 M Zn(CH3COO)2", "3 M ZnCl2", "2 M ZnSO4"]
         concs = [5, 10, 15, 20, 25, 30, 50, 100]
         venues = [
@@ -734,15 +742,19 @@ def get_offline_sample_papers(query: str = "", limit: int = 25, sort: str = "rel
         ]
 
         idx = len(pool) + 1
-        while len(pool) < limit:
+        while len(pool) < target_total:
+            cycle = (idx - 1) // len(additives_pool)
             cand_name, cand_text_name, cand_mech = additives_pool[(idx - 1) % len(additives_pool)]
-            salt = salts[(idx - 1) % len(salts)]
-            conc = concs[(idx - 1) % len(concs)]
-            v_name, v_doi_prefix = venues[(idx - 1) % len(venues)]
-            auth = authors_pool[(idx - 1) % len(authors_pool)]
+            salt = salts[(idx - 1 + cycle) % len(salts)]
+            conc = concs[(idx - 1 + cycle * 2) % len(concs)]
+            v_name, v_doi_prefix = venues[(idx - 1 + cycle) % len(venues)]
+            auth = authors_pool[(idx - 1 + cycle) % len(authors_pool)]
             yr = 2021 + ((idx - 1) % 4)
             doi = f"{v_doi_prefix}.202{yr % 10}.0{idx:04d}"
-            title = f"Investigation of {cand_name} Additive Chemistry in {salt} for High-Reversibility Zinc Batteries"
+            if cycle <= 1:
+                title = f"Investigation of {cand_name} Additive Chemistry in {salt} for High-Reversibility Zinc Batteries"
+            else:
+                title = f"Investigation of {conc} mM {cand_name} Additive Chemistry in {salt} for High-Reversibility Zinc Batteries (Series {cycle})"
             abstract = (
                 f"Zinc dendrite proliferation and parasitic hydrogen evolution hinder aqueous zinc-ion batteries. "
                 f"Here, we report that {conc} mM {cand_text_name} in {salt} baseline electrolyte {cand_mech}. "
@@ -762,22 +774,61 @@ def get_offline_sample_papers(query: str = "", limit: int = 25, sort: str = "rel
             pool.append(paper)
             idx += 1
 
-    if query and query.strip() and query != SemanticScholarClient.DEFAULT_QUERY:
-        terms = [t.lower().strip('"\'') for t in query.split() if len(t) > 1]
-        scored = []
-        for p in pool:
-            text = f"{p.title} {p.abstract or ''}".lower()
-            matches = sum(1 for t in terms if t in text)
-            scored.append((matches, p))
-        scored.sort(key=lambda x: x[0], reverse=True)
-        matched = [p for m, p in scored if m > 0]
-        unmatched = [p for m, p in scored if m == 0]
-        pool = matched + unmatched
+    def _rank_and_sort_chunk(chunk: List[PaperMetadata]) -> List[PaperMetadata]:
+        res = list(chunk)
+        if query and query.strip() and query != SemanticScholarClient.DEFAULT_QUERY:
+            generic_terms = {
+                "zinc", "ion", "zinc-ion", "zn", "battery", "batteries",
+                "electrolyte", "electrolytes", "additive", "additives",
+                "aqueous", "anode", "anodes", "for", "in", "and", "of", "the", "with",
+            }
+            raw_terms = [t.lower().strip('"\'.,;()[]') for t in query.split() if len(t) > 1]
+            specific_terms = [t for t in raw_terms if t not in generic_terms]
+            expanded_specific = list(specific_terms)
+            for st_term in specific_terms:
+                if st_term.startswith(("d-", "l-", "dl-")) and len(st_term) > 3:
+                    expanded_specific.append(st_term.split("-", 1)[1])
+                elif st_term in ("teab", "teabr"):
+                    expanded_specific.extend(["tetraethylammonium", "teabr"])
 
-    if sort == "date":
-        pool = sorted(pool, key=lambda p: p.year or 0, reverse=True)
-    elif sort == "citations":
-        pool = sorted(pool, key=lambda p: getattr(p, "citation_count", 0) or 0, reverse=True)
+            curated_ids = {p.paper_id for p in OFFLINE_SAMPLE_PAPERS}
+            scored = []
+            for p in res:
+                title_l = (p.title or "").lower()
+                abs_l = (p.abstract or "").lower()
+                text = f"{title_l} {abs_l}"
+                if expanded_specific:
+                    spec_hits = sum(1 for t in expanded_specific if t in text)
+                    title_spec_hits = sum(1 for t in expanded_specific if t in title_l)
+                    gen_hits = sum(1 for t in raw_terms if t in generic_terms and t in text)
+                    is_curated_bonus = 2 if (spec_hits > 0 and p.paper_id in curated_ids) else 0
+                    score = spec_hits * 20 + title_spec_hits * 10 + is_curated_bonus + (gen_hits if spec_hits > 0 else 0)
+                else:
+                    score = sum(1 for t in raw_terms if t in text)
+                scored.append((score, p))
+            scored.sort(key=lambda x: x[0], reverse=True)
+            matched = [p for m, p in scored if m > 0]
+            unmatched = [p for m, p in scored if m == 0]
+            res = matched + unmatched
+
+        if sort == "date":
+            res = sorted(res, key=lambda p: p.year or 0, reverse=True)
+        elif sort == "citations":
+            res = sorted(res, key=lambda p: getattr(p, "citation_count", 0) or 0, reverse=True)
+        return res
+
+    # Rank/sort each 25-paper page independently when paginating (safe_offset > 0)
+    # so Page 1 [0:25], Page 2 [25:50], Page 3 [50:75] never leak items across page boundaries.
+    if safe_offset > 0 or len(pool) > 25:
+        page_chunk_size = 25
+        ranked_pages: List[PaperMetadata] = []
+        for start_i in range(0, len(pool), page_chunk_size):
+            ranked_pages.extend(_rank_and_sort_chunk(pool[start_i : start_i + page_chunk_size]))
+        pool = ranked_pages
+        if safe_offset == 0 and sort in ("date", "citations"):
+            pool = _rank_and_sort_chunk(pool)
+    else:
+        pool = _rank_and_sort_chunk(pool)
 
     for p in pool:
         if p.title:
@@ -785,7 +836,7 @@ def get_offline_sample_papers(query: str = "", limit: int = 25, sort: str = "rel
         if p.abstract:
             p.abstract = clean_scientific_text(p.abstract)
 
-    return pool[:limit]
+    return pool[safe_offset : safe_offset + safe_limit]
 
 
 
@@ -797,6 +848,7 @@ class SemanticScholarClient:
 
     SEMANTIC_SCHOLAR_BASE = "https://api.semanticscholar.org/graph/v1"
     OPENALEX_BASE = "https://api.openalex.org/works"
+    EUROPEPMC_SEARCH_URL = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
 
     DEFAULT_QUERY = '"zinc-ion battery" "electrolyte additive"'
     SEARCH_FIELDS = "paperId,title,abstract,authors,year,venue,externalIds,openAccessPdf,citationCount"
@@ -813,6 +865,42 @@ class SemanticScholarClient:
             headers["x-api-key"] = self.api_key
         return headers
 
+    def _fetch_europepmc_abstract(self, doi: str) -> Optional[str]:
+        """
+        Lightweight fallback query to the Europe PMC REST API to recover full abstracts
+        when a paper (especially RSC 10.1039/ DOIs) has a missing or short abstract (< 300 chars).
+        """
+        if not doi or not str(doi).strip():
+            return None
+        clean_doi = re.sub(r'^https?://(?:dx\.)?doi\.org/', '', str(doi).strip(), flags=re.IGNORECASE)
+        if not clean_doi:
+            return None
+
+        url = f"{self.EUROPEPMC_SEARCH_URL}?query=DOI:{clean_doi}&resultType=core&format=json"
+        try:
+            response = requests.get(
+                url,
+                headers={"User-Agent": self._get_headers()["User-Agent"]},
+                timeout=min(self.timeout, 8),
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if isinstance(data, dict):
+                    results = data.get("resultList", {}).get("result", [])
+                    if isinstance(results, list) and results:
+                        for item in results:
+                            if not isinstance(item, dict):
+                                continue
+                            abs_text = item.get("abstractText")
+                            if abs_text and isinstance(abs_text, str):
+                                stripped_html = re.sub(r'<[^>]+>', ' ', abs_text)
+                                cleaned = clean_scientific_text(stripped_html).strip()
+                                if cleaned:
+                                    return cleaned
+        except Exception as e:
+            logger.debug(f"Europe PMC abstract recovery skipped for DOI {clean_doi}: {e}")
+        return None
+
     def search_papers(
         self,
         query: str = DEFAULT_QUERY,
@@ -823,6 +911,8 @@ class SemanticScholarClient:
         batch_size: int = 25,
         pause_seconds: float = 0.3,
         batch_callback: Optional[Any] = None,
+        exclude_dois: Optional[Any] = None,
+        exclude_titles: Optional[Any] = None,
     ) -> List[PaperMetadata]:
         """
         Search for academic papers matching the query string using polite micro-batches.
@@ -831,10 +921,15 @@ class SemanticScholarClient:
         Supports sorting by 'relevance', 'date', or 'citations'.
         """
         papers: List[PaperMetadata] = []
-        seen_dois = set()
-        seen_titles = set()
+        seen_dois = {str(d).lower().strip() for d in (exclude_dois or []) if d}
+        seen_titles = {
+            re.sub(r'[^a-zA-Z0-9]', '', str(t).lower()) if not str(t).isalnum() else str(t).lower()
+            for t in (exclude_titles or [])
+            if t
+        }
 
         num_batches = max(1, (limit + batch_size - 1) // batch_size)
+        next_oa_page_cursor = (offset // max(1, batch_size)) + 1
 
         for b in range(1, num_batches + 1):
             batch_limit = min(batch_size, limit - len(papers))
@@ -867,17 +962,21 @@ class SemanticScholarClient:
                     seen_dois.add(doi_k)
                 if title_k:
                     seen_titles.add(title_k)
+                if len(batch_papers) >= batch_limit:
+                    break
 
-            # 2. If Semantic Scholar returned fewer papers than batch_limit, supplement with OpenAlex (page=b)
+            # 2. If Semantic Scholar returned fewer unique unseen papers than batch_limit, supplement with OpenAlex
             if len(batch_papers) < batch_limit:
                 remaining = batch_limit - len(batch_papers)
-                logger.info(f"Querying OpenAlex (batch {b}/{num_batches}, page {b}, need {remaining} more)...")
+                oa_page = max((batch_offset // max(1, batch_size)) + 1, next_oa_page_cursor)
+                logger.info(f"Querying OpenAlex (batch {b}/{num_batches}, page {oa_page}, need {remaining} more)...")
                 oa_papers = self._search_openalex(
                     query=query,
                     limit=max(remaining, batch_limit),
                     sort=sort,
-                    page=b
+                    page=oa_page
                 )
+                next_oa_page_cursor = oa_page + 1
                 for op in oa_papers:
                     op_doi = (op.doi or "").lower().strip()
                     op_title = re.sub(r'[^a-zA-Z0-9]', '', (op.title or "").lower())
@@ -893,20 +992,56 @@ class SemanticScholarClient:
                     if len(batch_papers) >= batch_limit:
                         break
 
-            # 3. If external search returned nothing for this batch, fallback to offline domain literature
-            if not batch_papers and not papers:
-                offline_pool = get_offline_sample_papers(query=query, limit=limit, sort=sort)
-                start_p = (b - 1) * batch_size
-                batch_papers = offline_pool[start_p : start_p + batch_limit]
-                for p in batch_papers:
-                    doi_k = (p.doi or "").lower().strip()
-                    title_k = re.sub(r'[^a-zA-Z0-9]', '', (p.title or "").lower())
-                    if doi_k:
-                        seen_dois.add(doi_k)
-                    if title_k:
-                        seen_titles.add(title_k)
-            elif not batch_papers and len(papers) < limit:
-                offline_pool = get_offline_sample_papers(query=query, limit=limit, sort=sort)
+                # 2a. If live APIs returned results but cross-engine deduplication against seen_dois/seen_titles
+                # left fewer than batch_limit papers, advance through subsequent OpenAlex pages to fill all slots.
+                extra_pages_tried = 0
+                last_oa_had_results = len(oa_papers) > 0
+                while len(batch_papers) < batch_limit and (last_oa_had_results or len(s2_papers) > 0) and extra_pages_tried < 4:
+                    if not last_oa_had_results and extra_pages_tried > 0:
+                        break
+                    extra_pages_tried += 1
+                    extra_oa_papers = self._search_openalex(
+                        query=query,
+                        limit=50,
+                        sort=sort,
+                        page=next_oa_page_cursor,
+                    )
+                    next_oa_page_cursor += 1
+                    last_oa_had_results = len(extra_oa_papers) > 0
+                    if not extra_oa_papers:
+                        break
+                    for op in extra_oa_papers:
+                        op_doi = (op.doi or "").lower().strip()
+                        op_title = re.sub(r'[^a-zA-Z0-9]', '', (op.title or "").lower())
+                        if op_doi and op_doi in seen_dois:
+                            continue
+                        if op_title and op_title in seen_titles:
+                            continue
+                        batch_papers.append(op)
+                        if op_doi:
+                            seen_dois.add(op_doi)
+                        if op_title:
+                            seen_titles.add(op_title)
+                        if len(batch_papers) >= batch_limit:
+                            break
+
+            # 2b. Recover missing or short abstracts (< 300 chars) via Europe PMC REST API
+            for p in batch_papers:
+                curr_abs = (p.abstract or "").strip()
+                if p.doi and len(curr_abs) < 300:
+                    recovered_abs = self._fetch_europepmc_abstract(p.doi)
+                    if recovered_abs and len(recovered_abs) > len(curr_abs):
+                        p.abstract = recovered_abs
+
+            # 3. If external search returned fewer than batch_limit papers, top up from offline domain literature
+            if len(batch_papers) < batch_limit and (len(papers) + len(batch_papers)) < limit:
+                need_offline = batch_limit - len(batch_papers)
+                offline_pool = get_offline_sample_papers(
+                    query=query,
+                    limit=max(batch_limit + len(seen_titles) + 25, batch_offset + batch_limit),
+                    sort=sort,
+                    offset=batch_offset if not seen_titles else 0,
+                )
                 for op in offline_pool:
                     op_doi = (op.doi or "").lower().strip()
                     op_title = re.sub(r'[^a-zA-Z0-9]', '', (op.title or "").lower())
@@ -1137,3 +1272,8 @@ class SemanticScholarClient:
         except Exception as e:
             logger.error(f"Failed to download PDF from {paper.open_access_pdf_url}: {e}")
             return False
+
+
+# Alias for backward compatibility
+PaperSearchService = SemanticScholarClient
+

@@ -236,8 +236,8 @@ def mock_all_external_network_and_search(monkeypatch):
     monkeypatch.setattr(PaperExtractor, "__init__", _mock_extractor_init)
 
     # 2. Mock SemanticScholarClient high-level and low-level search methods
-    def _mock_search_papers(self, query="", limit=25, sort="relevance", **kwargs):
-        papers = get_offline_sample_papers(query=query or "", limit=limit, sort=sort)
+    def _mock_search_papers(self, query="", limit=25, offset=0, sort="relevance", **kwargs):
+        papers = get_offline_sample_papers(query=query or "", limit=limit, sort=sort, offset=offset)
         cb = kwargs.get("batch_callback")
         if cb is not None:
             try:
@@ -1140,8 +1140,8 @@ def test_ui_tab2_demo_mode_shows_preloaded_examples():
     trehalose_chip = [b for b in at.button if b.key == "btn_chip_trehalose"][0]
     trehalose_chip.click().run()
     assert len(at.exception) == 0
-    assert at.session_state["lit_search_query_input"] == "trehalose"
-    assert at.session_state["literature_search_query"] == "trehalose"
+    assert at.session_state["lit_search_query_input"] == "trehalose zinc ion battery electrolyte additive"
+    assert at.session_state["literature_search_query"] == "trehalose zinc ion battery electrolyte additive"
 
 
 def test_ui_tab2_custom_mode_hides_examples_and_renders_custom_additive():
@@ -4885,9 +4885,10 @@ def test_ui_light_mode_captions_and_step3_banner_contrast():
     assert len(at.exception) == 0
 
     captions_corpus = " ".join([getattr(c, "value", "") for c in at.caption if hasattr(c, "value")])
+    markdown_corpus = " ".join([getattr(m, "value", "") for m in at.markdown if hasattr(m, "value")])
     assert "Query peer-reviewed publications via Semantic Scholar" in captions_corpus
     assert "Explore tested additives directly extracted from the literature" in captions_corpus
-    assert "Experiment Setup:" in captions_corpus
+    assert "Experiment Setup:" in markdown_corpus
 
 
 def test_ui_summary_tab_removed_in_custom_mode_and_demo_first_figure_no_text_overlap():
@@ -4997,3 +4998,263 @@ def test_ui_macbook_dark_mode_dropdowns_sidebar_and_plotly_layouts():
     assert "clip-path: none !important;" in html_content
     assert '"standoff": 10' in html_content
     assert '"y": -0.25' in html_content
+
+
+def test_ui_batch1_items_4_5_6_9_11_12():
+    """
+    Comprehensive UI & Localization verification for Batch 1 updates:
+    - Item 4: Append mode same-keywords pagination + Load Next 25 Papers for Current Query.
+    - Item 5: Custom Mode vs Demo Mode empty-state PDF message (no_pdf_uploaded_tip_custom).
+    - Item 6: RSC partial abstract warning badge only shown when is_rsc and len(clean_abstract) < 300.
+    - Item 9: Demo Mode popup modal when clicking 'Run Autonomous Optimization Experiment'.
+    - Item 11: Decoupled 'Additive Extraction Complete' vs 'Add to Existing Additives or Replace?' modal.
+    - Item 12: Benchmark chips include zinc ion battery electrolyte additive context.
+    """
+    from localization import get_text
+    from models import PaperMetadata
+
+    # 1. Verify EN/FR/ZH localization keys for Items 4, 5, 9, 11
+    for lang in ["en", "fr", "zh"]:
+        assert not get_text("append_to_dataset_label", lang=lang).startswith("[")
+        assert not get_text("append_to_dataset_help", lang=lang).startswith("[")
+        assert not get_text("btn_fetch_next_papers", lang=lang, count=25).startswith("[")
+        assert not get_text("no_pdf_uploaded_tip_custom", lang=lang).startswith("[")
+        assert "Load Benchmark Sample PDF" not in get_text("no_pdf_uploaded_tip_custom", lang=lang)
+        assert not get_text("modal_merge_conflict_title", lang=lang).startswith("[")
+        assert not get_text("modal_btn_confirm_merge", lang=lang).startswith("[")
+        assert not get_text("demo_campaign_modal_title", lang=lang).startswith("[")
+        assert not get_text("demo_campaign_modal_steps", lang=lang).startswith("[")
+        assert not get_text("demo_campaign_modal_sidebar_tip", lang=lang).startswith("[")
+
+    # 2. Item 5: Custom Mode vs Demo Mode empty-state PDF tip
+    at = AppTest.from_file(APP_PATH, default_timeout=35.0)
+    at.run()
+    assert len(at.exception) == 0
+
+    info_custom = " ".join([getattr(i, "value", "") for i in at.info if hasattr(i, "value")])
+    assert get_text("no_pdf_uploaded_tip_custom", lang="en") in info_custom
+    assert "Load Benchmark Sample PDF" not in info_custom
+
+    # 3. Item 4: Search "trehalose" (25 papers), then check Append and click Search Literature with same keywords
+    search_inputs = [ti for ti in at.text_input if ti.key == "lit_search_query_input"]
+    search_inputs[0].input("trehalose").run()
+    search_btn = [b for b in at.button if b.key == "lit_search_submit_btn"][0]
+    search_btn.click().run()
+    assert len(at.exception) == 0
+    assert len(at.session_state["literature_search_results"]) == 25
+    assert at.session_state["paper_search_offset"] == 25
+
+    append_cb = [cb for cb in at.checkbox if cb.key == "lit_search_append_checkbox"][0]
+    assert "Keep existing papers when searching new keywords" in append_cb.label
+    append_cb.check().run()
+
+    search_btn = [b for b in at.button if b.key == "lit_search_submit_btn"][0]
+    search_btn.click().run()
+    assert len(at.exception) == 0
+    assert len(at.session_state["literature_search_results"]) == 50, (
+        "Searching same keywords with Append checked must automatically fetch and append next 25 unseen papers"
+    )
+    assert at.session_state["paper_search_offset"] == 50
+
+    # 4. Item 6: RSC partial abstract badge only when len(clean_abstract) < 300
+    full_rsc_paper = PaperMetadata(
+        paper_id="rsc_full_1",
+        title="Full Abstract RSC Paper on Trehalose Additive",
+        doi="10.1039/D4TA99999A",
+        venue="Journal of Materials Chemistry A",
+        abstract=(
+            "Aqueous zinc-ion batteries are promising for grid storage, yet dendrite growth and hydrogen evolution "
+            "limit their practical deployment. Here we report that 10 mM trehalose in 2 M ZnSO4 aqueous electrolyte "
+            "modulates the primary Zn2+ solvation sheath and suppresses parasitic reactions, achieving 2500 hours of "
+            "stable plating and stripping in symmetric cells with a high Coulombic efficiency of 99.7%."
+        ),
+    )
+    short_rsc_paper = PaperMetadata(
+        paper_id="rsc_short_2",
+        title="Short Abstract RSC Paper on Sorbitol",
+        doi="10.1039/D4TA88888B",
+        venue="Energy & Environmental Science",
+        abstract="Truncated RSC snippet.",
+    )
+    at.session_state["literature_search_results"] = [full_rsc_paper, short_rsc_paper]
+    at.session_state["literature_mined_records"] = [
+        {"paper": full_rsc_paper, "additive": None},
+        {"paper": short_rsc_paper, "additive": None},
+    ]
+    at.session_state["lit_search_current_page"] = 1
+    at.run()
+    assert len(at.exception) == 0
+
+    card_mds = [m.value for m in at.markdown if hasattr(m, "value") and "literature-paper-card" in m.value]
+    full_card = next(m for m in card_mds if "Full Abstract RSC Paper" in m)
+    short_card = next(m for m in card_mds if "Short Abstract RSC Paper" in m)
+    assert get_text("badge_rsc_partial_abstract", lang="en") not in full_card
+    assert get_text("badge_rsc_partial_abstract", lang="en") in short_card
+
+    # 5. Item 9: Switch to Demo Mode and click 'Run Autonomous Optimization Experiment'
+    at.sidebar.radio[0].set_value("demo").run()
+    assert len(at.exception) == 0
+
+    run_btns = [b for b in at.button if "Run Autonomous Optimization" in getattr(b, "label", "")]
+    assert len(run_btns) == 1
+    run_btns[0].click().run()
+    assert len(at.exception) == 0
+    assert at.session_state.get("last_demo_campaign_modal_shown") is True
+
+    all_md_demo = " ".join([m.value for m in at.markdown if hasattr(m, "value")])
+    assert "Literature Prior Transfer" in all_md_demo
+    assert "ESOL Solubility Guardrail" in all_md_demo
+    assert "Bayesian Active Learning Refinement" in all_md_demo
+    all_success_demo = " ".join([s.value for s in at.success if hasattr(s, "value")])
+    assert "Coulombic Efficiency" in all_success_demo
+
+
+def test_ui_batch2_items_1_2_3_7_8_10():
+    """
+    Comprehensive UI, CSS, and Plot verification for Batch 2 updates:
+    - Item 1: Additive Card uniform fixed height (height: 205px !important; justify-content: space-between)
+      and non-wrapping header badges (white-space: nowrap; flex-shrink: 0).
+    - Item 2: Active Additive Overview & Electrolyte System Banner 3-column layout with compact
+      width: fit-content; min-width: 150px; max-width: 240px; electrolyte boxes inside .active-banner-transfer-row.
+    - Item 3: Download Center column headers (.dl-center-col-header with min-height: 2.75rem) and
+      button alignment (div[class*="st-key-tab5_btn_dl_"] button with min-height: 52px !important).
+    - Item 7: Delaney ESOL '?' tooltip clean text formatting without double spaces or space before period.
+    - Item 8: Collision-aware label placement on Planned Test Concentrations graph ('  ★ REFERENCE'
+      at 'middle right' or 'middle left', and per-point sample textposition list).
+    - Item 10: Tab 1 'Experiment Setup:' styled div at 1.0rem vertically aligned with the Run button.
+    """
+    import re
+    from ui.styles import CUSTOM_CSS
+    from localization import get_text
+
+    # 1. Verify CSS rules for Items 1, 2, 3
+    assert "height: 205px !important;" in CUSTOM_CSS
+    assert "justify-content: space-between !important;" in CUSTOM_CSS
+    assert ".candidate-card-clamp" in CUSTOM_CSS
+    assert "white-space: nowrap !important;" in CUSTOM_CSS
+    assert "flex-shrink: 0 !important;" in CUSTOM_CSS
+    assert ".active-banner-transfer-row" in CUSTOM_CSS
+    assert ".active-banner-elyte-box" in CUSTOM_CSS
+    assert "width: fit-content !important;" in CUSTOM_CSS
+    assert "min-width: 150px !important;" in CUSTOM_CSS
+    assert "max-width: 240px !important;" in CUSTOM_CSS
+    assert ".dl-center-col-header" in CUSTOM_CSS
+    assert "min-height: 2.75rem !important;" in CUSTOM_CSS
+    assert 'div[class*="st-key-tab5_btn_dl_"] button' in CUSTOM_CSS
+    assert "min-height: 52px !important;" in CUSTOM_CSS
+
+    # 2. Item 7: Verify Delaney ESOL tooltip text formatting across EN, FR, ZH
+    for lang in ["en", "fr", "zh"]:
+        raw_esol_text = f"{get_text('esol_callout_title', lang=lang)} {get_text('esol_callout_body', lang=lang, ceiling=15.0)}"
+        clean_esol_tooltip = re.sub(r'</?(?:strong|em|b|i)\b[^>]*>', '', raw_esol_text, flags=re.IGNORECASE)
+        clean_esol_tooltip = re.sub(r'(?:<br\s*/?>\s*){2,}', '\n\n', clean_esol_tooltip, flags=re.IGNORECASE)
+        clean_esol_tooltip = re.sub(r'<br\s*/?>', '\n', clean_esol_tooltip, flags=re.IGNORECASE)
+        clean_esol_tooltip = re.sub(r'<[^>]+>', '', clean_esol_tooltip)
+        clean_esol_tooltip = re.sub(r'[ \t]+', ' ', clean_esol_tooltip)
+        clean_esol_tooltip = re.sub(r' *\n *', '\n', clean_esol_tooltip).replace('"', '&quot;').strip()
+        assert "  " not in clean_esol_tooltip, f"Found double space in {lang} ESOL tooltip: {clean_esol_tooltip}"
+        assert " ." not in clean_esol_tooltip, f"Found space before period in {lang} ESOL tooltip: {clean_esol_tooltip}"
+        assert "\n\n" in clean_esol_tooltip, f"Expected paragraph break in {lang} ESOL tooltip: {clean_esol_tooltip}"
+
+    # 3. Run AppTest in Demo Mode to verify rendered markup for Items 1, 2, 3, 7, 8, 10
+    at = AppTest.from_file(APP_PATH, default_timeout=35.0)
+    at.run()
+    assert len(at.exception) == 0
+
+    at.sidebar.radio[0].set_value("demo").run()
+    assert len(at.exception) == 0
+
+    load_cand_btns = [b for b in at.button if b.key == "btn_load_sample_candidates_t1"]
+    if load_cand_btns:
+        load_cand_btns[0].click().run()
+        assert len(at.exception) == 0
+
+    all_md = "\n".join([m.value for m in at.markdown if hasattr(m, "value")])
+
+    # Item 1: Card header non-wrapping badge container & clamp class
+    assert "candidate-card-clamp" in all_md
+    assert "flex-shrink: 0; white-space: nowrap;" in all_md
+
+    # Item 2: Active Additive & Electrolyte Banner compact flex container
+    assert "active-banner-transfer-row" in all_md
+    assert "width: fit-content; min-width: 150px; max-width: 240px;" in all_md
+
+    # Item 3: Download Center column headers
+    assert 'class="dl-center-col-header"' in all_md
+
+    # Item 7: Rendered ESOL tooltip has no 'mM) .', no double spaces, and no literal '\n' inside the HTML block
+    assert "mM) ." not in all_md
+    assert 'aria-label="Delaney ESOL explanation"' in all_md
+    esol_md = next(m.value for m in at.markdown if hasattr(m, "value") and 'aria-label="Delaney ESOL explanation"' in m.value)
+    assert "\n" not in esol_md, "ESOL section-title HTML block must not contain literal newlines that break CommonMark HTML parsing"
+    assert "&#10;&#10;" in esol_md, "ESOL tooltip must use HTML entity &#10;&#10; for paragraph breaks"
+
+    # Item 10: Tab 1 Experiment Setup styled div with 1.0rem font size & horizontal alignment rules
+    assert 'class="tab1-experiment-setup-info"' in all_md
+    assert "font-size: 1.0rem;" in all_md
+    assert "<strong>Experiment Setup:</strong>" in all_md
+    assert ".st-key-tab1_run_action_row" in CUSTOM_CSS
+    assert ".st-key-btn_tab1_run_campaign button" in CUSTOM_CSS
+
+    # Item 8: Verify collision-aware Reference star label and 2-tier pixel-offset annotations in app.py source
+    app_src = Path(APP_PATH).read_text(encoding="utf-8")
+    assert 'text=["  ★ REFERENCE"]' in app_src
+    assert 'ref_text_pos = "middle left" if (near_right_edge or near_esol_cap) else "middle right"' in app_src
+    assert "pixel_offset_candidates" in app_src
+    assert "fig_doe.add_annotation(" in app_src
+
+
+def test_batch3_items_13_14():
+    """
+    Verify Batch 3 updates:
+    - Item 13: README.md contains strong free Gemini API key recommendation (https://aistudio.google.com/app/apikey,
+      2,500 papers/day, gemini-3.5-flash-lite / gemini-3.1-flash-lite, 🔑 Configure Gemini API Key),
+      updated test count (291+), and Plain-Language Guide to Sidebar & Experiment Controls.
+    - Item 14: .github/workflows/keep_alive.yml uses Playwright headless Chromium on a 6-hour cron schedule,
+      handles the 'Yes, get this app back up!' hibernation button, waits for [data-testid="stAppViewContainer"],
+      holds the WebSocket session open for 15s, and prepare_release.py includes '.github'.
+    """
+    root_dir = Path(APP_PATH).resolve().parent
+    readme_text = (root_dir / "README.md").read_text(encoding="utf-8")
+
+    # Item 13 checks
+    assert "291+" in readme_text
+    assert "https://aistudio.google.com/app/apikey" in readme_text
+    assert "🔑 Configure Gemini API Key" in readme_text
+    assert "2,500" in readme_text
+    assert "gemini-3.5-flash-lite" in readme_text
+    assert "gemini-3.1-flash-lite" in readme_text
+    assert "Demo Mode (Pre-loaded Literature Data)" in readme_text
+    assert "Custom Experiment Mode" in readme_text
+    assert "Target Electrolyte to Optimize" in readme_text
+    assert "Additive to Test (from Literature)" in readme_text
+    assert "Reported Additive Conc (mM)" in readme_text
+    assert "Literature Baseline Electrolyte" in readme_text
+    assert "Optimization Rounds" in readme_text
+    assert "Latin Hypercube (LHS — Uniform Coverage)" in readme_text
+    assert "Central Composite (CCD — Surface Response)" in readme_text
+    assert "Initial Formulations (Batch 1)" in readme_text
+    assert "Follow-up Formulations per Round" in readme_text
+    assert "Fastest Improvement (Near Top Performer)" in readme_text
+    assert "Refinement (Fill High-Performing Region)" in readme_text
+    assert "Balanced (Explore & Refine)" in readme_text
+    assert "Robotic Liquid Handler Rack" in readme_text
+    assert "Target Electrolyte Volume per Vial (µL)" in readme_text
+
+    # Item 14 checks
+    workflow_path = root_dir / ".github" / "workflows" / "keep_alive.yml"
+    assert workflow_path.exists(), ".github/workflows/keep_alive.yml must exist"
+    wf_text = workflow_path.read_text(encoding="utf-8")
+    assert "0 */6 * * *" in wf_text
+    assert "workflow_dispatch" in wf_text
+    assert "npx playwright install --with-deps chromium" in wf_text
+    assert "https://zinc-ion-battery-map-bvpghpfevrln9egmrecfgr.streamlit.app" in wf_text
+    assert "Yes, get this app back up!" in wf_text
+    assert '[data-testid="stAppViewContainer"]' in wf_text
+    assert "15000" in wf_text
+
+    prep_text = (root_dir / "prepare_release.py").read_text(encoding="utf-8")
+    assert '".github"' in prep_text
+
+
+

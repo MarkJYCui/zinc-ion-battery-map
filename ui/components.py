@@ -270,44 +270,34 @@ def _render_post_extraction_reminder_dialog(is_demo_mode: bool = True):
         st.session_state["has_merge_conflict_prompt"] = False
         st.session_state["show_formulation_reminder_modal"] = False
 
-    @st.dialog(title=tr("modal_extraction_complete_title"), width="medium", on_dismiss=_on_modal_dismiss)
+    dialog_title = tr("modal_merge_conflict_title") if has_conflict else tr("modal_extraction_complete_title")
+
+    @st.dialog(title=dialog_title, width="medium", on_dismiss=_on_modal_dismiss)
     def _dialog_content():
         # Immediate client-side check for localStorage preference:
-        # - If no merge conflict, auto-close modal when localStorage has hide flag.
-        # - If merge conflict is active, hide only the reminder paragraph & checkbox when localStorage has hide flag.
-        st.components.v1.html(
-            f"""
-            <script>
-            (function() {{
-                try {{
-                    const hasConflict = {"true" if has_conflict else "false"};
-                    if (window.parent.localStorage.getItem('map_hide_formulation_reminder') === 'true') {{
-                        const dlg = window.parent.document.querySelector('div[role="dialog"]');
-                        if (dlg) {{
-                            if (!hasConflict) {{
+        # Only auto-close when there is no merge conflict and the user previously hid the workflow tip.
+        if not has_conflict:
+            st.components.v1.html(
+                """
+                <script>
+                (function() {
+                    try {
+                        if (window.parent.localStorage.getItem('map_hide_formulation_reminder') === 'true') {
+                            const dlg = window.parent.document.querySelector('div[role="dialog"]');
+                            if (dlg) {
                                 const closeBtn = dlg.querySelector('button[aria-label="Close"]');
                                 if (closeBtn) closeBtn.click();
-                            }} else {{
-                                const remBody = dlg.querySelector('.st-key-modal_reminder_body_slot');
-                                if (remBody) remBody.style.display = 'none';
-                                const remCb = dlg.querySelector('.st-key-chk_dont_show_formulation_reminder');
-                                if (remCb) remCb.style.display = 'none';
-                            }}
-                        }}
-                    }}
-                }} catch(e) {{}}
-            }})();
-            </script>
-            """,
-            height=0,
-            width=0,
-        )
+                            }
+                        }
+                    } catch(e) {}
+                })();
+                </script>
+                """,
+                height=0,
+                width=0,
+            )
 
-        if not reminder_hidden:
-            with st.container(key="modal_reminder_body_slot"):
-                st.markdown(tr("modal_extraction_complete_body"))
-                st.markdown("<div style='margin-bottom: 12px;'></div>", unsafe_allow_html=True)
-
+        dont_show = False
         if has_conflict:
             prior_t1 = st.session_state.get("_prior_existing_t1_cands", [])
             new_t1 = st.session_state.get("_pending_extracted_t1_cands", [])
@@ -327,19 +317,21 @@ def _render_post_extraction_reminder_dialog(is_demo_mode: bool = True):
             )
             _apply_modal_merge_choice(merge_choice)
             st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
-
-        dont_show = False
-        if not reminder_hidden:
+        else:
+            with st.container(key="modal_reminder_body_slot"):
+                st.markdown(tr("modal_extraction_complete_body"))
+                st.markdown("<div style='margin-bottom: 12px;'></div>", unsafe_allow_html=True)
             dont_show = st.checkbox(
                 tr("modal_dont_show_again"),
                 key="chk_dont_show_formulation_reminder",
-                help="Do not show this reminder again on this browser",
+                help="Do not show this workflow tip again on this browser",
             )
             st.markdown("<div style='margin-bottom: 8px;'></div>", unsafe_allow_html=True)
 
+        confirm_btn_label = tr("modal_btn_confirm_merge") if has_conflict else tr("modal_btn_got_it")
         col_got_it, col_go_form = st.columns([1.0, 1.4], vertical_alignment="center")
         with col_got_it:
-            if st.button(tr("modal_btn_got_it"), key="btn_reminder_modal_got_it", use_container_width=True):
+            if st.button(confirm_btn_label, key="btn_reminder_modal_got_it", use_container_width=True):
                 _apply_modal_merge_choice()
                 if dont_show:
                     st.session_state["hide_formulation_reminder"] = True
@@ -820,7 +812,22 @@ def _render_candidate_chemical_dossier(
 
     # Dedicated Delaney ESOL Physical Saturation Guardrail Card
     raw_esol_text = f"{tr('esol_callout_title')} {tr('esol_callout_body', ceiling=hard_ceiling_mm)}"
-    clean_esol_tooltip = re.sub(r'<[^>]+>', ' ', raw_esol_text).replace('"', '&quot;').strip()
+    clean_esol_tooltip = re.sub(r'</?(?:strong|em|b|i)\b[^>]*>', '', raw_esol_text, flags=re.IGNORECASE)
+    clean_esol_tooltip = re.sub(r'(?:<br\s*/?>\s*){2,}', ' __ESOL_PARA__ ', clean_esol_tooltip, flags=re.IGNORECASE)
+    clean_esol_tooltip = re.sub(r'<br\s*/?>', ' __ESOL_BR__ ', clean_esol_tooltip, flags=re.IGNORECASE)
+    clean_esol_tooltip = re.sub(r'<[^>]+>', '', clean_esol_tooltip)
+    clean_esol_tooltip = re.sub(r'\s+', ' ', clean_esol_tooltip).strip()
+    clean_esol_tooltip = re.sub(r'\s+([.,;:!?])', r'\1', clean_esol_tooltip)
+    clean_esol_tooltip = (
+        clean_esol_tooltip.replace('&', '&amp;')
+        .replace('"', '&quot;')
+        .replace('<', '&lt;')
+        .replace('>', '&gt;')
+        .replace(' __ESOL_PARA__ ', '&#10;&#10;')
+        .replace('__ESOL_PARA__', '&#10;&#10;')
+        .replace(' __ESOL_BR__ ', '&#10;')
+        .replace('__ESOL_BR__', '&#10;')
+    )
 
     st.markdown(
         f'<div class="section-title" style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">'
@@ -1655,25 +1662,25 @@ def render_two_tier_card_deck(
 
                         card_html = f"""
                         <div class="paper-analysis-box candidate-card-deck-box" style="border-left: 4px solid {'#2ecc71' if is_active else '#1f77b4'};">
-                            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
-                                <div style="font-size: 1.0rem; font-weight: 700; color: inherit;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 4px;">
+                                <div class="candidate-card-clamp" style="font-size: 1.0rem; font-weight: 700; color: inherit; min-width: 0; flex: 1 1 auto; overflow-wrap: break-word;">
                                     🧪 <strong>{cand_name}</strong>{formula_disp}
                                 </div>
-                                <div style="display: flex; gap: 4px; align-items: center;">
+                                <div style="display: flex; gap: 4px; align-items: center; flex-shrink: 0; white-space: nowrap;">
                                     {prov_badge}
                                     {active_badge}
                                 </div>
                             </div>
-                            <div style="font-size: 0.86rem; color: inherit; margin-bottom: 3px;">
+                            <div style="font-size: 0.86rem; color: inherit; margin-bottom: 2px;">
                                 • <strong>{tr('card_reported_conc')}:</strong> {conc_disp} | <strong>{tr('card_baseline_salt')}:</strong> {base_salt_display}
                             </div>
-                            <div style="font-size: 0.86rem; color: inherit; margin-bottom: 3px;">
+                            <div style="font-size: 0.86rem; color: inherit; margin-bottom: 2px;">
                                 • <strong>{tr('card_delaney_esol')}:</strong> {esol_disp} | <strong>{tr('card_safety_cap')}:</strong> {safety_disp}
                             </div>
-                            <div style="font-size: 0.82rem; color: inherit; margin-bottom: 3px;">
+                            <div class="candidate-card-clamp" style="font-size: 0.82rem; color: inherit; margin-bottom: 2px;">
                                 • <strong>{tr('card_mechanisms')}:</strong> {mechs_disp}
                             </div>
-                            <div style="font-size: 0.82rem; color: inherit;">
+                            <div class="candidate-card-clamp" style="font-size: 0.82rem; color: inherit;">
                                 • <strong>{tr('card_provenance_label')}:</strong> {prov_badge} — <em>{clean_scientific_text(cand.rationale)}</em>
                             </div>
                         </div>
@@ -1861,19 +1868,21 @@ def render_two_tier_card_deck(
 
                         card_html = f"""
                         <div class="paper-analysis-box candidate-card-deck-box" style="border-left: 4px solid {'#2ecc71' if is_active else '#9b59b6'};">
-                            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
-                                <div style="font-size: 1.0rem; font-weight: 700; color: inherit;">
+                            <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 4px;">
+                                <div class="candidate-card-clamp" style="font-size: 1.0rem; font-weight: 700; color: inherit; min-width: 0; flex: 1 1 auto; overflow-wrap: break-word;">
                                     🧪 <strong>{cand_name}</strong>{formula_disp}
                                 </div>
-                                {active_badge}
+                                <div style="display: flex; gap: 4px; align-items: center; flex-shrink: 0; white-space: nowrap;">
+                                    {active_badge}
+                                </div>
                             </div>
-                            <div style="font-size: 0.86rem; color: inherit; margin-bottom: 3px;">
+                            <div style="font-size: 0.86rem; color: inherit; margin-bottom: 2px;">
                                 • <strong>{tr('card_tanimoto_similarity')}:</strong> <span class="badge-tag badge-purple">{sim_score:.2f}</span> | <strong>{tr('card_source')}:</strong> <span class="badge-tag badge-blue">{source_lbl}</span>
                             </div>
-                            <div style="font-size: 0.86rem; color: inherit; margin-bottom: 3px;">
+                            <div style="font-size: 0.86rem; color: inherit; margin-bottom: 2px;">
                                 • <strong>{tr('card_delaney_esol')}:</strong> {theor_sat_mm:.1f} mM | <strong>{tr('card_safety_cap')}:</strong> <span style="color: #2ca02c; font-weight: 600;">{safety_cap_mm:.1f} mM</span>
                             </div>
-                            <div style="font-size: 0.82rem; color: inherit;">
+                            <div class="candidate-card-clamp" style="font-size: 0.82rem; color: inherit;">
                                 • <strong>{tr('card_compat')}:</strong> <em>{clean_scientific_text(compat_note)}</em>
                             </div>
                         </div>
