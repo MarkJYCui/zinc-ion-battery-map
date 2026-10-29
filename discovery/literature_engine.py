@@ -34,12 +34,12 @@ try:
     from discovery.similarity import RDKitSimilarityEngine
     from discovery.search import SemanticScholarClient
     from discovery.extractor import PaperExtractor, GENERIC_NON_ADDITIVES, clean_llm_json_output
-    from discovery.formula_utils import get_chemical_formula, format_chem_formula, normalize_condition_key
+    from discovery.formula_utils import get_chemical_formula, format_chem_formula, normalize_condition_key, convert_concentration_to_mM
 except ImportError:
     from similarity import RDKitSimilarityEngine
     from search import SemanticScholarClient
     from extractor import PaperExtractor, GENERIC_NON_ADDITIVES, clean_llm_json_output
-    from formula_utils import get_chemical_formula, format_chem_formula, normalize_condition_key
+    from formula_utils import get_chemical_formula, format_chem_formula, normalize_condition_key, convert_concentration_to_mM
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("LiteratureDiscoveryEngine")
@@ -207,11 +207,9 @@ class LiteratureDiscoveryEngine:
             bc = getattr(additive, "battery_context", None)
             base_salt = bc.baseline_electrolyte if (bc and getattr(bc, "baseline_electrolyte", None)) else getattr(additive, "parent_baseline_electrolyte", "Unspecified / Not reported")
             opt_c = getattr(additive, "optimal_concentration", None)
-            conc_val = float(opt_c.value) if (opt_c and getattr(opt_c, "value", None) is not None) else getattr(additive, "reported_concentration", None)
-
-            cond_key = normalize_condition_key(name_clean, conc_val, base_salt)
-            if cond_key in mined_condition_keys:
-                continue
+            raw_conc_val = float(opt_c.value) if (opt_c and getattr(opt_c, "value", None) is not None) else getattr(additive, "reported_concentration", None)
+            raw_conc_unit = getattr(opt_c, "unit", None) if opt_c else getattr(additive, "reported_concentration_unit", "mM")
+            raw_conc_text = getattr(opt_c, "raw_text", None) if opt_c else None
 
             smi = getattr(additive, "smiles", None)
             if not smi:
@@ -221,6 +219,13 @@ class LiteratureDiscoveryEngine:
             canon_smi = Chem.MolToSmiles(mol) if mol else (smi or "")
 
             desc = self.similarity_engine.calculate_descriptors(canon_smi) if canon_smi else None
+            mw_val = desc["molecular_weight"] if desc else 0.0
+            conc_val, conc_unit = convert_concentration_to_mM(raw_conc_val, raw_conc_unit, mw=mw_val, raw_text=raw_conc_text)
+
+            cond_key = normalize_condition_key(name_clean, conc_val, base_salt)
+            if cond_key in mined_condition_keys:
+                continue
+
             esol = calculate_delaney_esol(mol) if mol else None
             compat_note, compat_breakdown = assess_electrolyte_compatibility(
                 mol=mol,
@@ -230,7 +235,7 @@ class LiteratureDiscoveryEngine:
             if opt_c and getattr(opt_c, "raw_text", None):
                 conc_label = f" ({opt_c.raw_text})"
             elif conc_val is not None:
-                conc_label = f" ({conc_val:.1f} mM)"
+                conc_label = f" ({conc_val:.1f} {conc_unit})"
             else:
                 conc_label = ""
             formula_str = get_chemical_formula(canon_smi or smi, name_clean)
@@ -240,7 +245,7 @@ class LiteratureDiscoveryEngine:
                 smiles=(smi if mol else None) or canon_smi or (smi or ""),
                 similarity_score=1.0,
                 similarity_metric="Direct Literature Finding",
-                molecular_weight=desc["molecular_weight"] if desc else 0.0,
+                molecular_weight=mw_val,
                 logp=desc["logp"] if desc else 0.0,
                 logs=esol,
                 tpsa=desc["tpsa"] if desc else 0.0,
@@ -254,7 +259,7 @@ class LiteratureDiscoveryEngine:
                 electrolyte_compatibility_breakdown=compat_breakdown,
                 chemical_formula=formula_str,
                 reported_concentration=conc_val,
-                reported_concentration_unit="mM" if conc_val is not None else None,
+                reported_concentration_unit=conc_unit if conc_val is not None else None,
                 reported_mechanisms=getattr(additive, "primary_mechanisms", None) or getattr(additive, "reported_mechanisms", None) or [],
                 mechanism_summary=getattr(additive, "mechanism_summary", "") or "Unspecified / Not reported",
                 is_literature_additive=True
@@ -374,8 +379,19 @@ class LiteratureDiscoveryEngine:
                         mol=mol,
                         baseline_electrolyte=base_salt
                     )
-                    conc_val = float(additive.optimal_concentration.value) if (additive.optimal_concentration and additive.optimal_concentration.value is not None) else 15.0
-                    conc_label = f" ({additive.optimal_concentration.raw_text})" if (additive.optimal_concentration and additive.optimal_concentration.raw_text) else f" ({conc_val:.1f} mM)"
+                    opt_c_rec = additive.optimal_concentration
+                    if opt_c_rec and opt_c_rec.value is not None:
+                        conc_val, conc_unit = convert_concentration_to_mM(
+                            opt_c_rec.value,
+                            opt_c_rec.unit,
+                            mw=desc["molecular_weight"],
+                            raw_text=opt_c_rec.raw_text,
+                        )
+                        conc_label = f" ({opt_c_rec.raw_text})" if opt_c_rec.raw_text else f" ({conc_val:.1f} {conc_unit})"
+                    else:
+                        conc_val = None
+                        conc_unit = None
+                        conc_label = ""
                     formula_str = get_chemical_formula(smi, additive.name)
                     cand = CandidateMolecule(
                         name=additive.name,
@@ -396,7 +412,7 @@ class LiteratureDiscoveryEngine:
                         electrolyte_compatibility_breakdown=compat_breakdown,
                         chemical_formula=formula_str,
                         reported_concentration=conc_val,
-                        reported_concentration_unit="mM",
+                        reported_concentration_unit=conc_unit,
                         reported_mechanisms=additive.primary_mechanisms or [],
                         mechanism_summary=additive.mechanism_summary or "",
                         is_literature_additive=True,

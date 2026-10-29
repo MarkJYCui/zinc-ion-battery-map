@@ -648,6 +648,23 @@ CUSTOM_CSS = """
     .sidebar-credits-box div {
         color: inherit !important;
     }
+
+    /* Hidden reactive tab-sync trigger buttons for Step 2 Two-Tier Card Deck */
+    .st-key-btn_sync_tier1_active_tab,
+    .st-key-btn_sync_tier2_active_tab,
+    div[data-testid="stElementContainer"]:has(.st-key-btn_sync_tier1_active_tab),
+    div[data-testid="stElementContainer"]:has(.st-key-btn_sync_tier2_active_tab) {
+        position: absolute !important;
+        width: 0 !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+    }
     .tech-icon-grid {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
@@ -679,10 +696,16 @@ CUSTOM_CSS = """
     .st-key-btn_clear_uploaded_pdfs button,
     .st-key-batch_pdf_gemini_popover button,
     .st-key-batch_pdf_gemini_popover [data-testid="stPopoverButton"],
+    div[class*="st-key-batch_pdf_gemini_popover"] button,
+    div[class*="st-key-batch_pdf_gemini_popover"] [data-testid="stPopoverButton"],
     .st-key-online_search_gemini_popover button,
     .st-key-online_search_gemini_popover [data-testid="stPopoverButton"],
+    div[class*="st-key-online_search_gemini_popover"] button,
+    div[class*="st-key-online_search_gemini_popover"] [data-testid="stPopoverButton"],
     div[data-testid="stColumn"]:has(.st-key-online_search_gemini_popover) button,
     div[data-testid="stColumn"]:has(.st-key-online_search_gemini_popover) [data-testid="stPopoverButton"],
+    div[data-testid="stColumn"]:has(div[class*="st-key-online_search_gemini_popover"]) button,
+    div[data-testid="stColumn"]:has(div[class*="st-key-online_search_gemini_popover"]) [data-testid="stPopoverButton"],
     div[data-testid="stColumn"]:has(.st-key-lit_search_submit_btn) button,
     .st-key-lit_search_submit_btn button {
         height: auto !important;
@@ -699,7 +722,9 @@ CUSTOM_CSS = """
         text-overflow: clip !important;
     }
     .st-key-online_search_gemini_popover [data-testid="stPopover"],
-    .st-key-batch_pdf_gemini_popover [data-testid="stPopover"] {
+    .st-key-batch_pdf_gemini_popover [data-testid="stPopover"],
+    div[class*="st-key-online_search_gemini_popover"] [data-testid="stPopover"],
+    div[class*="st-key-batch_pdf_gemini_popover"] [data-testid="stPopover"] {
         height: auto !important;
         min-height: 48px !important;
         max-height: none !important;
@@ -707,13 +732,18 @@ CUSTOM_CSS = """
     .st-key-btn_process_batch_pdfs button div[data-testid="stMarkdownContainer"],
     .st-key-btn_clear_uploaded_pdfs button div[data-testid="stMarkdownContainer"],
     .st-key-batch_pdf_gemini_popover button div[data-testid="stMarkdownContainer"],
+    div[class*="st-key-batch_pdf_gemini_popover"] button div[data-testid="stMarkdownContainer"],
     .st-key-online_search_gemini_popover button div[data-testid="stMarkdownContainer"],
+    div[class*="st-key-online_search_gemini_popover"] button div[data-testid="stMarkdownContainer"],
     .st-key-online_search_gemini_popover [data-testid="stPopoverButton"] div,
+    div[class*="st-key-online_search_gemini_popover"] [data-testid="stPopoverButton"] div,
     .st-key-lit_search_submit_btn button div[data-testid="stMarkdownContainer"],
     .st-key-btn_process_batch_pdfs button p,
     .st-key-btn_clear_uploaded_pdfs button p,
     .st-key-batch_pdf_gemini_popover button p,
+    div[class*="st-key-batch_pdf_gemini_popover"] button p,
     .st-key-online_search_gemini_popover button p,
+    div[class*="st-key-online_search_gemini_popover"] button p,
     .st-key-lit_search_submit_btn button p {
         margin: 0 !important;
         padding: 0 !important;
@@ -727,7 +757,9 @@ CUSTOM_CSS = """
         text-overflow: clip !important;
     }
     div.st-key-batch_pdf_gemini_popover,
+    div[class*="st-key-batch_pdf_gemini_popover"],
     div.st-key-online_search_gemini_popover,
+    div[class*="st-key-online_search_gemini_popover"],
     div.st-key-lit_search_submit_btn,
     div.st-key-btn_process_batch_pdfs,
     div.st-key-btn_clear_uploaded_pdfs {
@@ -862,12 +894,16 @@ CUSTOM_CSS = """
 
     /* Hidden utility container */
     iframe[height="0"] {
-        display: none !important;
+        position: absolute !important;
+        width: 0 !important;
         height: 0 !important;
         min-height: 0 !important;
         border: none !important;
         margin: 0 !important;
         padding: 0 !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        overflow: hidden !important;
     }
 
     /* Step 2 Candidate Card Deck: Responsive Height and Button Alignment */
@@ -1163,6 +1199,14 @@ def inject_global_styles() -> None:
                     parentDoc.addEventListener('click', function(ev) {
                         const tabBtn = ev.target && ev.target.closest ? ev.target.closest('button[role="tab"], button[data-baseweb="tab"]') : null;
                         if (tabBtn) {
+                            try {
+                                const openPopoverBtns = parentDoc.querySelectorAll('[data-testid="stPopoverButton"][aria-expanded="true"], [data-testid="stPopover"] button[aria-expanded="true"]');
+                                openPopoverBtns.forEach(function(btn) {
+                                    if (btn !== tabBtn) {
+                                        btn.click();
+                                    }
+                                });
+                            } catch (popErr) {}
                             setTimeout(refreshVisiblePlotlyCharts, 60);
                             setTimeout(refreshVisiblePlotlyCharts, 220);
                         }

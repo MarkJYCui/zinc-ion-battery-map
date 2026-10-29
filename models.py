@@ -4,8 +4,35 @@ Defines the Pydantic models for structured LLM extraction and SDL APIs.
 """
 
 from __future__ import annotations
-from pydantic import BaseModel, Field
+import re
+from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Dict, Any
+
+
+def _coerce_optional_float(v: Any) -> Optional[float]:
+    """Safely coerce LLM outputs (including 'Unspecified / Not reported' or None) to Optional[float]."""
+    if v is None or isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        s = v.strip()
+        if not s:
+            return None
+        s_low = s.lower()
+        if any(tok in s_low for tok in ("unspecified", "not reported", "n/a", "none", "null", "unknown")):
+            return None
+        try:
+            return float(s)
+        except ValueError:
+            m = re.search(r"[-+]?\d+(?:\.\d+)?", s)
+            if m:
+                try:
+                    return float(m.group(0))
+                except ValueError:
+                    return None
+            return None
+    return None
 
 class ElectrolyteCompatibilityDetail(BaseModel):
     salt: str = Field(description="Electrolyte salt system (e.g., ZnSO4, Zn(OTf)2, Zn(ClO4)2, Zn(TFSI)2, ZnCl2, Zn(CH3COO)2)")
@@ -31,8 +58,13 @@ class Concentration(BaseModel):
     unit: Optional[str] = Field(default=None, description="Unit of measurement (e.g., mM, M, wt%, vol%)")
     raw_text: Optional[str] = Field(default=None, description="The exact text as it appeared in the paper")
 
+    @field_validator("value", mode="before")
+    @classmethod
+    def _validate_value(cls, v: Any) -> Optional[float]:
+        return _coerce_optional_float(v)
+
 class ZincIonBatteryContext(BaseModel):
-    baseline_electrolyte: str = Field(description="Baseline salt and concentration (e.g., 2 M ZnSO4)")
+    baseline_electrolyte: str = Field(default="Unspecified / Not reported", description="Baseline salt and concentration (e.g., 2 M ZnSO4)")
     solvent: str = Field(default="H2O", description="Primary solvent (e.g., H2O)")
     electrolyte_pH: Optional[float] = Field(
         default=None, 
@@ -47,10 +79,20 @@ class ZincIonBatteryContext(BaseModel):
         description="Separator type used (e.g., Glass fiber GF/A, Celgard 3501, Filter paper). Critical for avoiding confounding morphological effects."
     )
 
+    @field_validator("electrolyte_pH", "temperature_celsius", mode="before")
+    @classmethod
+    def _validate_optional_floats(cls, v: Any) -> Optional[float]:
+        return _coerce_optional_float(v)
+
 class CyclingCondition(BaseModel):
-    current_density_mA_cm2: float = Field(description="Applied current density in mA/cm2")
-    areal_capacity_mAh_cm2: float = Field(description="Areal capacity in mAh/cm2")
-    lifespan_hours: float = Field(description="Total lifespan achieved in hours under these specific conditions")
+    current_density_mA_cm2: Optional[float] = Field(default=None, description="Applied current density in mA/cm2")
+    areal_capacity_mAh_cm2: Optional[float] = Field(default=None, description="Areal capacity in mAh/cm2")
+    lifespan_hours: Optional[float] = Field(default=None, description="Total lifespan achieved in hours under these specific conditions")
+
+    @field_validator("current_density_mA_cm2", "areal_capacity_mAh_cm2", "lifespan_hours", mode="before")
+    @classmethod
+    def _validate_cycling_floats(cls, v: Any) -> Optional[float]:
+        return _coerce_optional_float(v)
 
 class PerformanceMetrics(BaseModel):
     symmetric_cell_performance: Optional[List[CyclingCondition]] = Field(
@@ -61,6 +103,17 @@ class PerformanceMetrics(BaseModel):
     capacity_retention_percent: Optional[float] = None
     full_cell_cycle_count: Optional[int] = None
     overpotential_mV: Optional[float] = None
+
+    @field_validator("coulombic_efficiency_percent", "capacity_retention_percent", "overpotential_mV", mode="before")
+    @classmethod
+    def _validate_perf_floats(cls, v: Any) -> Optional[float]:
+        return _coerce_optional_float(v)
+
+    @field_validator("full_cell_cycle_count", mode="before")
+    @classmethod
+    def _validate_cycle_int(cls, v: Any) -> Optional[int]:
+        f = _coerce_optional_float(v)
+        return int(f) if f is not None else None
 
 class ExtractedAdditive(BaseModel):
     name: str = Field(description="Common name of the electrolyte additive")

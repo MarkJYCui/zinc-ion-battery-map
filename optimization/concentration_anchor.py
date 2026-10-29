@@ -25,6 +25,7 @@ from models import (
     CandidateMolecule,
     ExtractionResult,
 )
+from discovery.formula_utils import convert_concentration_to_mM
 
 logger = logging.getLogger(__name__)
 
@@ -251,6 +252,7 @@ ELECTROLYTE_SCALING_RULES: Dict[str, Dict[str, Any]] = {
 from discovery.similarity import (
     FG_PATTERNS,
     calculate_delaney_esol,
+    is_esol_applicable,
     detect_functional_groups,
 )
 
@@ -506,19 +508,20 @@ class ConcentrationAnchorEngine:
         solubility_ceiling_mM = None
         is_capped = False
 
-        if esol_logs_override is not None:
+        if mol is not None:
+            esol_ok, _ = is_esol_applicable(mol, esol_logs_override)
+            if esol_ok:
+                logs = esol_logs_override if esol_logs_override is not None else calculate_delaney_esol(mol)
+                saturation_mM = round(math.pow(10, logs + 3.0), 3)
+                solubility_limit_mM = saturation_mM
+                ceiling_mM = round(0.8 * saturation_mM, 3)
+                solubility_ceiling_mM = ceiling_mM
+        elif smiles is None and esol_logs_override is not None and -10.0 < esol_logs_override <= 2.0:
             logs = esol_logs_override
             saturation_mM = round(math.pow(10, logs + 3.0), 3)
             solubility_limit_mM = saturation_mM
             ceiling_mM = round(0.8 * saturation_mM, 3)
             solubility_ceiling_mM = ceiling_mM
-        elif mol is not None:
-            logs = calculate_delaney_esol(mol)
-            if logs is not None and logs > -10.0:
-                saturation_mM = round(math.pow(10, logs + 3.0), 3)
-                solubility_limit_mM = saturation_mM
-                ceiling_mM = round(0.8 * saturation_mM, 3)
-                solubility_ceiling_mM = ceiling_mM
 
         min_conc = round(ratio_min * shifted_anchor_conc, 4)
         max_conc = round(ratio_max * shifted_anchor_conc, 4)
@@ -578,11 +581,32 @@ class ConcentrationAnchorEngine:
         """
         conc_mM = fallback_conc_mM
         has_reported_conc = False
+        mw_val = None
+        if additive.smiles and Chem is not None:
+            try:
+                _mol = Chem.MolFromSmiles(additive.smiles)
+                if _mol is not None:
+                    mw_val = float(Descriptors.MolWt(_mol))
+            except Exception:
+                mw_val = None
         if additive.optimal_concentration and additive.optimal_concentration.value is not None:
-            conc_mM = float(additive.optimal_concentration.value)
+            conv_val, _ = convert_concentration_to_mM(
+                additive.optimal_concentration.value,
+                additive.optimal_concentration.unit,
+                mw=mw_val,
+                raw_text=additive.optimal_concentration.raw_text,
+            )
+            conc_mM = float(conv_val) if conv_val is not None else float(additive.optimal_concentration.value)
             has_reported_conc = True
         elif additive.concentration_range_tested and len(additive.concentration_range_tested) > 0:
-            conc_mM = float(additive.concentration_range_tested[0].value)
+            c0 = additive.concentration_range_tested[0]
+            conv_val, _ = convert_concentration_to_mM(
+                c0.value,
+                c0.unit,
+                mw=mw_val,
+                raw_text=c0.raw_text,
+            )
+            conc_mM = float(conv_val) if conv_val is not None else float(c0.value)
             has_reported_conc = True
 
         parent_electrolyte = "2 M ZnSO4"
@@ -658,7 +682,23 @@ class ConcentrationAnchorEngine:
             raise ValueError("ExtractionResult contains no extracted additives.")
 
         parent_add = extraction.additives[additive_index]
-        parent_conc = float(parent_add.optimal_concentration.value) if (parent_add.optimal_concentration and parent_add.optimal_concentration.value) else 10.0
+        parent_conc = 10.0
+        if parent_add.optimal_concentration and parent_add.optimal_concentration.value is not None:
+            mw_val = None
+            if parent_add.smiles and Chem is not None:
+                try:
+                    _mol = Chem.MolFromSmiles(parent_add.smiles)
+                    if _mol is not None:
+                        mw_val = float(Descriptors.MolWt(_mol))
+                except Exception:
+                    mw_val = None
+            conv_val, _ = convert_concentration_to_mM(
+                parent_add.optimal_concentration.value,
+                parent_add.optimal_concentration.unit,
+                mw=mw_val,
+                raw_text=parent_add.optimal_concentration.raw_text,
+            )
+            parent_conc = float(conv_val) if conv_val is not None else float(parent_add.optimal_concentration.value)
         parent_elyte = parent_add.battery_context.baseline_electrolyte if (parent_add.battery_context and parent_add.battery_context.baseline_electrolyte) else "2 M ZnSO4"
 
         if candidate_index is not None:

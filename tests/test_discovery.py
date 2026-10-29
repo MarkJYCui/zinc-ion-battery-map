@@ -1782,6 +1782,113 @@ def test_benchmark_chips_queries_and_offline_prioritization():
         assert "ZnSO" in extracted[0].battery_context.baseline_electrolyte
 
 
+def test_delaney_esol_strict_applicability_domain_and_anchor_na():
+    """
+    Verify Option A strict Delaney ESOL applicability domain:
+    - Neutral organic additives (D-Sorbitol, Trehalose, Thiourea) pass is_esol_applicable
+      and return valid solubility_limit_mM / solubility_ceiling_mM in ConcentrationAnchorEngine.
+    - Ionic salts (Sodium citrate, TEABr), inorganic salts (CuSO4), zwitterions (Betaine),
+      and invalid SMILES return (False, reason) from is_esol_applicable and None for
+      solubility_limit_mM / solubility_ceiling_mM in ConcentrationAnchorEngine.
+    """
+    from discovery.similarity import is_esol_applicable, calculate_delaney_esol
+    from optimization.concentration_anchor import ConcentrationAnchorEngine
+
+    engine = ConcentrationAnchorEngine()
+
+    # Neutral organic additives -> applicable
+    for name, smi in [
+        ("D-Sorbitol", "C(C(C(C(C(CO)O)O)O)O)O"),
+        ("Thiourea", "C(=S)(N)N"),
+        ("Succinic Acid", "C(CC(=O)O)C(=O)O"),
+    ]:
+        logs = calculate_delaney_esol(smi)
+        ok, reason = is_esol_applicable(smi, logs)
+        assert ok is True, f"Expected {name} ({smi}) to be within ESOL domain, got reason: {reason}"
+        anchor = engine.calculate_anchor(
+            published_conc_mM=20.0,
+            parent_electrolyte="2 M ZnSO4",
+            target_electrolyte="1 M Zn(OTf)2",
+            smiles=smi,
+            additive_name=name,
+        )
+        assert anchor.solubility_limit_mM is not None and anchor.solubility_limit_mM > 0
+        assert anchor.solubility_ceiling_mM is not None and anchor.solubility_ceiling_mM > 0
+
+    # Salts, zwitterions, inorganics, invalid SMILES -> outside domain (N/A / None)
+    for name, smi in [
+        ("Sodium citrate", "C(C(=O)[O-])C(CC(=O)[O-])(C(=O)[O-])O.[Na+].[Na+].[Na+]"),
+        ("Tetraethylammonium bromide", "CC[N+](CC)(CC)CC.[Br-]"),
+        ("Betaine", "C[N+](C)(C)CC(=O)[O-]"),
+        ("Copper(II) sulfate", "[Cu+2].[O-]S(=O)(=O)[O-]"),
+        ("Invalid SMILES", "NOT_A_VALID_SMILES_STRING"),
+    ]:
+        ok, reason = is_esol_applicable(smi)
+        assert ok is False, f"Expected {name} ({smi}) to be outside ESOL domain"
+        assert len(reason) > 0
+        anchor = engine.calculate_anchor(
+            published_conc_mM=20.0,
+            parent_electrolyte="2 M ZnSO4",
+            target_electrolyte="1 M Zn(OTf)2",
+            smiles=smi,
+            additive_name=name,
+        )
+        assert anchor.solubility_limit_mM is None, f"Expected None solubility_limit_mM for {name}, got {anchor.solubility_limit_mM}"
+        assert anchor.solubility_ceiling_mM is None, f"Expected None solubility_ceiling_mM for {name}, got {anchor.solubility_ceiling_mM}"
+        assert anchor.is_capped_by_solubility is False
+
+
+def test_pydantic_coercion_and_streamlined_pdf_extraction_prompt():
+    """
+    Verify:
+    1. ExtractedAdditive handles non-numeric strings (e.g. 'Unspecified / Not reported')
+       or None for numeric fields in battery_context and performance_metrics without raising ValidationError.
+    2. EXTRACTION_PROMPT is streamlined to focus on core additive fields and does not request
+       unused confounding metrics like electrolyte_pH or performance_metrics.
+    """
+    from discovery.extractor import EXTRACTION_PROMPT
+
+    assert "electrolyte_pH" not in EXTRACTION_PROMPT
+    assert "performance_metrics" not in EXTRACTION_PROMPT
+    assert "separator_material" not in EXTRACTION_PROMPT
+    assert '"baseline_electrolyte": "2 M ZnSO₄"' in EXTRACTION_PROMPT
+
+    raw_llm_dict = {
+        "name": "Sodium citrate",
+        "smiles": "C(C(=O)[O-])C(CC(=O)[O-])(C(=O)[O-])O.[Na+].[Na+].[Na+]",
+        "optimal_concentration": {
+            "value": 0.1,
+            "unit": "M",
+            "molarity_mM": 100.0,
+            "raw_text": "0.1 M",
+        },
+        "concentration_range_tested": [],
+        "functional_groups": ["carboxylate", "hydroxyl"],
+        "primary_mechanisms": ["Zn²⁺ solvation sheath modulation"],
+        "mechanism_summary": "Modulates Zn2+ solvation sheath.",
+        "battery_context": {
+            "baseline_electrolyte": "2 M ZnSO4",
+            "electrolyte_pH": "Unspecified / Not reported",
+        },
+        "performance_metrics": {
+            "symmetric_cell_performance": [
+                {
+                    "current_density_mA_cm2": 1.0,
+                    "areal_capacity_mAh_cm2": None,
+                    "lifespan_hours": "Unspecified / Not reported",
+                }
+            ]
+        },
+    }
+    parsed = ExtractedAdditive(**raw_llm_dict)
+    assert parsed.name == "Sodium citrate"
+    assert parsed.battery_context.baseline_electrolyte == "2 M ZnSO4"
+    assert parsed.battery_context.electrolyte_pH is None
+    assert parsed.performance_metrics.symmetric_cell_performance[0].areal_capacity_mAh_cm2 is None
+    assert parsed.performance_metrics.symmetric_cell_performance[0].lifespan_hours is None
+
+
+
 
 
 

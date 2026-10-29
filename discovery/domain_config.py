@@ -50,19 +50,22 @@ class ZIBDomainConfig:
         "Dendrite suppression"
     ])
 
-    # Core LLM System & User prompt instructions (Zero-Fabrication + Confounding Variables)
+    # Core LLM System & User prompt instructions (Zero-Fabrication Mandate)
     extraction_instructions: str = (
         "You are an expert materials science AI assisting an autonomous Self-Driving Laboratory (SDL).\n"
         "Analyze the provided text from an academic research manuscript regarding aqueous zinc-ion batteries (ZIBs).\n"
         "Extract electrolyte additives investigated in the study into the requested structured JSON schema.\n\n"
         "CRITICAL RULES:\n"
-        "1. Identify the primary electrolyte additive tested (chemical name and SMILES if identifiable).\n"
-        "2. Extract the precise optimal concentration found by the authors (e.g. 5 mM, 10 mM, 2 wt%).\n"
+        "1. Identify the primary electrolyte additive tested (clean chemical name and SMILES if identifiable; set 'smiles': null for nanomaterials/polymers).\n"
+        "2. Extract the precise optimal concentration found by the authors (e.g. 5 mM, 10 mM, 0.1 mol L-1, 2 wt%). "
+        "ZERO FABRICATION FOR CONCENTRATION: If the manuscript does not explicitly state an optimal additive concentration, "
+        "set 'optimal_concentration': null and 'concentration_range_tested': []. Do NOT guess or assume 10 mM or 15 mM.\n"
         "3. List all concentration ranges investigated in the experiments.\n"
-        "4. Identify the baseline electrolyte (e.g. 2 M ZnSO4, 1 M Zn(OTf)2) and solvent (typically H2O).\n"
-        "5. Confounding variables: Extract the separator material (e.g. Glass fiber GF/A) and electrolyte pH.\n"
-        "6. Extract key electrochemical mechanisms (solvation sheath modulation, HER suppression, electrostatic shielding, etc.).\n"
-        "7. ZERO FABRICATION RULE: If NO electrolyte additive is tested in the text (e.g. paper focuses on "
+        "4. Identify the baseline electrolyte salt and concentration (e.g. 2 M ZnSO4, 1 M Zn(OTf)2, 3 M Zn(OTf)2) and solvent (typically H2O). "
+        "ZERO FABRICATION FOR BASELINE SALT: If no baseline zinc salt is explicitly mentioned in the manuscript text, "
+        "set 'baseline_electrolyte': 'Unspecified / Not reported'. Do NOT guess or assume 2 M ZnSO4 when none is reported.\n"
+        "5. Extract key electrochemical mechanisms (Zn²⁺ solvation sheath modulation, HER suppression, electrostatic shielding, etc.).\n"
+        "6. ZERO FABRICATION RULE: If NO electrolyte additive is tested in the text (e.g. paper focuses on "
         "cathode synthesis, separator coatings, or pure zinc foil metallurgy without liquid additives), "
         "return an empty additives list: {\"additives\": [], \"summary\": \"No electrolyte additives investigated in this manuscript.\"}. "
         "Do NOT hallucinate or guess additives."
@@ -72,18 +75,30 @@ class ZIBDomainConfig:
         """Normalize raw unit string to standard abbreviation."""
         if not raw_unit:
             return "mM"
-        u_lower = raw_unit.strip().lower()
-        if u_lower in ["mm", "millimolar", "mmol/l", "mmol l-1", "mmol·l-1"]:
+        u_lower = (
+            raw_unit.strip()
+            .replace("⁻¹", "-1")
+            .replace("⁻³", "-3")
+            .replace("·", " ")
+            .replace("⋅", " ")
+            .replace("−", "-")
+            .replace("–", "-")
+            .lower()
+        )
+        u_lower = " ".join(u_lower.split())
+        if u_lower in ["mm", "millimolar", "mmol/l", "mmol l-1", "mmol dm-3", "mmol/dm3"]:
             return "mM"
-        elif u_lower in ["m", "molar", "mol/l", "mol l-1", "mol·l-1"]:
+        elif u_lower in ["m", "molar", "mol/l", "mol l-1", "mol dm-3", "mol/dm3"]:
             return "M"
-        elif u_lower in ["wt%", "wt %", "weight%", "weight %"]:
+        elif u_lower in ["um", "µm", "μm", "micromolar", "umol/l", "µmol/l", "umol l-1", "µmol l-1"]:
+            return "µM"
+        elif u_lower in ["wt%", "wt %", "wt.%", "weight%", "weight %"]:
             return "wt%"
-        elif u_lower in ["vol%", "vol %", "volume%", "volume %", "v/v"]:
+        elif u_lower in ["vol%", "vol %", "vol.%", "volume%", "volume %", "v/v"]:
             return "vol%"
-        elif u_lower in ["mg/ml", "mg ml-1", "mg·ml-1"]:
+        elif u_lower in ["mg/ml", "mg ml-1"]:
             return "mg/mL"
-        elif u_lower in ["g/l", "g l-1", "g·l-1"]:
+        elif u_lower in ["g/l", "g l-1", "g dm-3", "g/dm3"]:
             return "g/L"
         return raw_unit.strip()
 
@@ -142,7 +157,7 @@ class ZIBDomainConfig:
         errors = []
         if not additive.name or not additive.name.strip():
             errors.append("Additive name is empty.")
-        if additive.optimal_concentration is not None:
+        if additive.optimal_concentration is not None and additive.optimal_concentration.value is not None:
             if additive.optimal_concentration.value < 0:
                 errors.append(f"Optimal concentration cannot be negative: {additive.optimal_concentration.value}")
         if additive.battery_context and additive.battery_context.electrolyte_pH is not None:

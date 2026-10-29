@@ -5257,4 +5257,174 @@ def test_batch3_items_13_14():
     assert '".github"' in prep_text
 
 
+def test_updates_1_2_3_unit_conversion_mode_switch_and_tab_sync():
+    """
+    Verify Updates 1, 2, and 3:
+    1. Theoretical Saturation and 80% Safety Limit >= 100 mM are formatted in M (e.g. 'M'),
+       and < 100 mM remain in 'mM'.
+    2. Switching from Custom Mode to Demo Mode after loading a PDF with concentration < 0.5
+       (e.g., 0.1) does NOT raise StreamlitValueBelowMinError.
+    3. Switching between 'Additives Found in Literature' (Tier 1) and 'AI-Suggested Similar Additives' (Tier 2)
+       synchronizes the active additive in 'Active Additive Overview' and 'Solubility Safety Limit'.
+    """
+    from models import CandidateMolecule
+
+    at = AppTest.from_file(APP_PATH, default_timeout=35.0)
+    at.run()
+    assert len(at.exception) == 0
+
+    # Update 2: Set published_conc_input = 0.1 in Custom Mode, then switch to Demo Mode
+    at.session_state["published_conc_input"] = 0.1
+    at.sidebar.radio[0].set_value("demo").run()
+    assert len(at.exception) == 0, f"Switching to Demo Mode with published_conc_input=0.1 raised: {at.exception}"
+
+    # Update 1: In Demo Mode, D-Sorbitol has high solubility (>= 100 mM), so Theoretical Saturation
+    # and 80% Safety Limit must be displayed in M (e.g., 'M' instead of >100 mM)
+    metric_values = [m.value for m in at.metric if hasattr(m, "value") and m.value]
+    assert any(v.endswith(" M") for v in metric_values), (
+        f"Expected solubility metrics >= 100 mM to be formatted in 'M', got {metric_values}"
+    )
+
+    # Update 3: Verify Tier 1 and Tier 2 sub-tab synchronization
+    cand_t1_a = CandidateMolecule(
+        name="Literature Additive Alpha",
+        smiles="OCC(O)CO",
+        similarity_score=1.0,
+        similarity_metric="Direct Literature Finding",
+        molecular_weight=92.09,
+        logp=-1.76,
+        logs=0.5,
+        tpsa=60.69,
+        hbd=3,
+        hba=3,
+        rotatable_bonds=2,
+        reported_concentration=20.0,
+        reported_concentration_unit="mM",
+        parent_baseline_electrolyte="2 M ZnSO4",
+        is_literature_additive=True,
+        rationale="Tested in literature A",
+    )
+    cand_t1_b = CandidateMolecule(
+        name="Literature Additive Beta",
+        smiles="CS(=O)C",
+        similarity_score=1.0,
+        similarity_metric="Direct Literature Finding",
+        molecular_weight=78.13,
+        logp=-0.61,
+        logs=0.8,
+        tpsa=17.07,
+        hbd=0,
+        hba=1,
+        rotatable_bonds=0,
+        reported_concentration=50.0,
+        reported_concentration_unit="mM",
+        parent_baseline_electrolyte="2 M ZnSO4",
+        is_literature_additive=True,
+        rationale="Tested in literature B",
+    )
+    cand_t2_x = CandidateMolecule(
+        name="AI Analogue Xylitol",
+        smiles="OCC(O)C(O)C(O)CO",
+        similarity_score=0.88,
+        similarity_metric="Tanimoto (Morgan FP)",
+        molecular_weight=152.15,
+        logp=-2.56,
+        logs=0.6,
+        tpsa=101.15,
+        hbd=5,
+        hba=5,
+        rotatable_bonds=4,
+        reported_concentration=20.0,
+        reported_concentration_unit="mM",
+        parent_baseline_electrolyte="2 M ZnSO4",
+        is_literature_additive=False,
+        rationale="AI-suggested polyol analogue",
+    )
+
+    at.session_state["mined_literature_additives"] = [cand_t1_a, cand_t1_b]
+    at.session_state["ai_suggested_additives"] = [cand_t2_x]
+    at.session_state["suggested_candidates"] = [cand_t2_x]
+    at.run()
+    assert len(at.exception) == 0
+
+    # Select Literature Additive Beta in Tier 1 dropdown
+    t1_dd = [sb for sb in at.selectbox if sb.key == "step2_tier1_additive_dropdown"][0]
+    t1_dd.set_value(1).run()
+    assert len(at.exception) == 0
+    assert at.session_state.get("selected_additive_name") == "Literature Additive Beta"
+    assert at.session_state.get("active_step2_tier_tab") == "tier1"
+
+    # Now simulate switching to the AI-Suggested Similar Additives tab via native st.tabs(key="step2_tier_tabs", on_change="rerun")
+    from localization import get_text
+    t1_lbl = f"📚 {get_text('tier1_title', lang='en')} (2)"
+    t2_lbl = f"✨ {get_text('tier2_title', lang='en')} (1)"
+    at.session_state["step2_tier_tabs"] = t2_lbl
+    at.run()
+    assert len(at.exception) == 0
+    assert at.session_state.get("selected_additive_name") == "AI Analogue Xylitol"
+    assert at.session_state.get("active_step2_tier_tab") == "tier2"
+    assert at.session_state.get("extracted_formulation_plan").anchor.additive_name == "AI Analogue Xylitol"
+
+    # Now simulate switching back to the Literature Additives tab via native st.tabs(key="step2_tier_tabs", on_change="rerun")
+    at.session_state["step2_tier_tabs"] = t1_lbl
+    at.run()
+    assert len(at.exception) == 0
+    assert at.session_state.get("selected_additive_name") == "Literature Additive Beta"
+    assert at.session_state.get("active_step2_tier_tab") == "tier1"
+    assert at.session_state.get("extracted_formulation_plan").anchor.additive_name == "Literature Additive Beta"
+
+
+def test_esol_strict_domain_and_invalid_smiles_display_na_and_popover_close():
+    """
+    Verify:
+    1. Selecting an ionic salt (Sodium citrate) displays 'N/A' for Theoretical Saturation,
+       80% Safety Limit (Max Allowed), and ESOL LogS instead of unphysical values like 72777980.45 M.
+    2. Entering an invalid SMILES displays 'N/A' for Theoretical Saturation and 80% Safety Limit
+       instead of 0.0 mM.
+    3. Clicking Save Key in the Gemini API key popover increments gemini_popover_version so the
+       popover closes immediately.
+    """
+    at = AppTest.from_file(APP_PATH, default_timeout=35.0)
+    at.run()
+    assert len(at.exception) == 0
+
+    # 1. Select Sodium citrate in Custom Mode
+    at.session_state["tab2_mol_select"] = "Sodium citrate"
+    at.session_state["_last_inspect_mol_select"] = "Sodium citrate"
+    at.session_state["selected_additive_name"] = "Sodium citrate"
+    at.session_state["custom_additive_name"] = "Sodium citrate"
+    at.session_state["custom_smiles"] = "C(C(=O)[O-])C(CC(=O)[O-])(C(=O)[O-])O.[Na+].[Na+].[Na+]"
+    at.session_state["tab2_custom_additive_name_input"] = "Sodium citrate"
+    at.session_state["tab2_custom_smiles_input"] = "C(C(=O)[O-])C(CC(=O)[O-])(C(=O)[O-])O.[Na+].[Na+].[Na+]"
+    at.run()
+    assert len(at.exception) == 0
+
+    metrics_by_label = {m.label: m.value for m in at.metric if hasattr(m, "label") and hasattr(m, "value")}
+    assert metrics_by_label.get("Theoretical Saturation") == "N/A", f"Expected N/A for Sodium citrate saturation, got {metrics_by_label.get('Theoretical Saturation')}"
+    assert metrics_by_label.get("80% Safety Limit (Max Allowed)") == "N/A", f"Expected N/A for Sodium citrate safety limit, got {metrics_by_label.get('80% Safety Limit (Max Allowed)')}"
+    assert metrics_by_label.get("Estimated Solubility (LogS)") == "N/A", f"Expected N/A for Sodium citrate ESOL LogS, got {metrics_by_label.get('Estimated Solubility (LogS)')}"
+    assert "72777980" not in " ".join(str(v) for v in metrics_by_label.values())
+
+    # 2. Enter an invalid SMILES in Custom Mode
+    at.session_state["custom_smiles"] = "INVALID_SMILES_XYZ"
+    at.session_state["tab2_custom_smiles_input"] = "INVALID_SMILES_XYZ"
+    at.run()
+    assert len(at.exception) == 0
+
+    metrics_invalid = {m.label: m.value for m in at.metric if hasattr(m, "label") and hasattr(m, "value")}
+    assert metrics_invalid.get("Theoretical Saturation") == "N/A", f"Expected N/A for invalid SMILES saturation, got {metrics_invalid.get('Theoretical Saturation')}"
+    assert metrics_invalid.get("80% Safety Limit (Max Allowed)") == "N/A", f"Expected N/A for invalid SMILES safety limit, got {metrics_invalid.get('80% Safety Limit (Max Allowed)')}"
+
+    # 3. Clicking Save Key in Gemini popover increments gemini_popover_version
+    prev_pop_ver = at.session_state.get("gemini_popover_version", 0)
+    online_key_input = [ti for ti in at.text_input if ti.key.startswith("online_search_gemini_api_key_input")][0]
+    online_key_input.input("AIzaSyDummyKeyForUnitTesting1234567890").run()
+    save_btn = [b for b in at.button if b.key == "btn_save_online_gemini_key"][0]
+    save_btn.click().run()
+    assert len(at.exception) == 0
+    assert at.session_state.get("gemini_popover_version", 0) == prev_pop_ver + 1
+
+
+
+
 

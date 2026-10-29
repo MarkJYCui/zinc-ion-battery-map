@@ -23,6 +23,7 @@ from discovery.similarity import (
     CURATED_ZIB_ADDITIVES,
     RDKitSimilarityEngine,
     calculate_delaney_esol,
+    is_esol_applicable,
     detect_functional_groups,
     assess_electrolyte_compatibility,
     generate_chemoinformatic_rationale,
@@ -41,6 +42,8 @@ from discovery.formula_utils import (
     get_chemical_formula,
     format_chem_formula,
     normalize_condition_key,
+    convert_concentration_to_mM,
+    format_solubility_conc,
 )
 from ui.i18n import (
     tr,
@@ -85,13 +88,14 @@ def get_curated_molecules_df() -> pd.DataFrame:
         desc = item["descriptors"]
         fg = item["functional_groups"]
         esol = desc["logs"]
-        sat_mm = round((10 ** esol) * 1000.0, 1) if esol > -10 else 0.0
-        ceiling_mm = round(0.80 * sat_mm, 1)
+        esol_ok, _ = is_esol_applicable(item["mol"], esol)
+        sat_mm = round((10 ** esol) * 1000.0, 1) if esol_ok else None
+        ceiling_mm = round(0.80 * sat_mm, 1) if sat_mm is not None else None
         chem_formula = get_chemical_formula(item["smiles"], item["name"])
         rows.append({
             "Name": item["name"],
             "Chemical Formula": chem_formula,
-            "ESOL LogS": esol,
+            "ESOL LogS": esol if esol_ok else None,
             "Saturation (mM)": sat_mm,
             "80% Ceiling (mM)": ceiling_mm,
             "MW (g/mol)": desc["molecular_weight"] if desc else 0.0,
@@ -130,8 +134,9 @@ def compute_similarity_ranking(target_smiles: str) -> pd.DataFrame:
         sim = round(float(AllChem.DataStructs.TanimotoSimilarity(target_fp, cand_fp)), 4)
         desc = item["descriptors"]
         esol = desc["logs"]
-        sat_mm = round((10 ** esol) * 1000.0, 1)
-        ceiling_mm = round(0.80 * sat_mm, 1)
+        esol_ok, _ = is_esol_applicable(item["mol"], esol)
+        sat_mm = round((10 ** esol) * 1000.0, 1) if esol_ok else None
+        ceiling_mm = round(0.80 * sat_mm, 1) if sat_mm is not None else None
         fg = item["functional_groups"]
         chem_formula = get_chemical_formula(item["smiles"], item["name"])
         
@@ -139,7 +144,7 @@ def compute_similarity_ranking(target_smiles: str) -> pd.DataFrame:
             "Candidate Molecule": item["name"],
             "Tanimoto Similarity": sim,
             "Chemical Formula": chem_formula,
-            "Delaney ESOL (LogS)": esol,
+            "Delaney ESOL (LogS)": esol if esol_ok else None,
             "Aqueous Saturation (mM)": sat_mm,
             "80% Ceiling (mM)": ceiling_mm,
             "MW (g/mol)": desc["molecular_weight"] if desc else 0.0,
@@ -159,6 +164,7 @@ def _apply_card_candidate(
     total_vol_ul: float = 2000.0,
     published_conc_input: float = 15.0,
     parent_electrolyte_input: str = "2 M ZnSO4",
+    show_toast: bool = True,
 ):
     """Synchronize an additive candidate with Step 2 formulation, DoE plan, and OT-2 schedule."""
     c_name = cand.name
@@ -176,16 +182,31 @@ def _apply_card_candidate(
         st.session_state["custom_additives"] = custom_list
 
     st.session_state["tab2_mol_select"] = c_name
+    st.session_state["_last_inspect_mol_select"] = c_name
+    st.session_state["_last_inspect_mol_widget"] = c_name
+    st.session_state["_last_sidebar_additive_widget"] = c_name
     st.session_state["selected_additive_name"] = c_name
     st.session_state["custom_additive_name"] = c_name
     st.session_state["custom_smiles"] = c_smiles
     st.session_state["tab2_custom_additive_name_input"] = c_name
     st.session_state["tab2_custom_smiles_input"] = c_smiles
 
-    c_conc = cand.reported_concentration if (cand.reported_concentration is not None and cand.reported_concentration > 0) else published_conc_input
+    if cand.reported_concentration is not None and cand.reported_concentration > 0:
+        conv_c, _ = convert_concentration_to_mM(
+            cand.reported_concentration,
+            cand.reported_concentration_unit,
+            mw=cand.molecular_weight,
+        )
+        c_conc = float(conv_c) if conv_c is not None else float(cand.reported_concentration)
+    else:
+        c_conc = published_conc_input
+
     raw_parent = cand.parent_baseline_electrolyte or parent_electrolyte_input
     is_unspec_parent = (not raw_parent or "unspecified" in str(raw_parent).lower() or "not reported" in str(raw_parent).lower())
     c_salt = selected_target_salt if is_unspec_parent else format_chem_formula(raw_parent)
+    st.session_state["is_active_baseline_unspecified"] = (
+        cand.reported_concentration is None or is_unspec_parent
+    )
 
     st.session_state["published_conc_input"] = float(c_conc)
     st.session_state["parent_electrolyte_input"] = c_salt
@@ -204,8 +225,9 @@ def _apply_card_candidate(
         session_state=st.session_state,
     )
     st.session_state["show_formulation_reminder_modal"] = False
-    hard_ceil = new_anchor.solubility_ceiling_mM or 100.0
-    st.session_state["last_extracted_notice"] = tr("suggested_additive_applied_toast", name=c_name, ceiling=hard_ceil)
+    if show_toast:
+        hard_ceil = new_anchor.solubility_ceiling_mM or 100.0
+        st.session_state["last_extracted_notice"] = tr("suggested_additive_applied_toast", name=c_name, ceiling=hard_ceil)
     st.rerun()
 
 
@@ -609,9 +631,11 @@ def _render_candidate_chemical_dossier(
         mol_obj = None
         img = None
         fg_list = []
-        esol_val = 0.0
-        theor_sat_mm = 0.0
-        hard_ceiling_mm = 0.0
+        esol_val = None
+        theor_sat_mm = None
+        hard_ceiling_mm = None
+        esol_ok = False
+        esol_reason = "Valid SMILES required"
         desc = None
     else:
         mol_obj = Chem.MolFromSmiles(cand_smiles)
@@ -619,9 +643,11 @@ def _render_candidate_chemical_dossier(
             st.warning(tr("invalid_smiles_warning"))
             img = None
             fg_list = []
-            esol_val = -99.9
-            theor_sat_mm = 0.0
-            hard_ceiling_mm = 0.0
+            esol_val = None
+            theor_sat_mm = None
+            hard_ceiling_mm = None
+            esol_ok = False
+            esol_reason = "Valid SMILES required"
             desc = None
         else:
             img = render_rdkit_mol_image(cand_smiles, width=380, height=200)
@@ -629,13 +655,20 @@ def _render_candidate_chemical_dossier(
             desc = sim_engine.calculate_descriptors(cand_smiles)
             fg_list = detect_functional_groups(mol_obj)
             if cand_obj and cand_obj.logs is not None and cand_obj.logs > -10:
-                esol_val = cand_obj.logs
+                raw_esol = cand_obj.logs
             elif desc and "logs" in desc:
-                esol_val = desc["logs"]
+                raw_esol = desc["logs"]
             else:
-                esol_val = calculate_delaney_esol(mol_obj)
-            theor_sat_mm = round((10 ** esol_val) * 1000.0, 1) if esol_val > -10 else 0.0
-            hard_ceiling_mm = round(0.80 * theor_sat_mm, 1)
+                raw_esol = calculate_delaney_esol(mol_obj)
+            esol_ok, esol_reason = is_esol_applicable(mol_obj, raw_esol)
+            if esol_ok:
+                esol_val = raw_esol
+                theor_sat_mm = round((10 ** esol_val) * 1000.0, 1)
+                hard_ceiling_mm = round(0.80 * theor_sat_mm, 1)
+            else:
+                esol_val = None
+                theor_sat_mm = None
+                hard_ceiling_mm = None
 
     dossier_container_height = 880
     col_mol1, col_mol2 = st.columns([1.25, 1.75])
@@ -811,7 +844,10 @@ def _render_candidate_chemical_dossier(
                     )
 
     # Dedicated Delaney ESOL Physical Saturation Guardrail Card
-    raw_esol_text = f"{tr('esol_callout_title')} {tr('esol_callout_body', ceiling=hard_ceiling_mm)}"
+    esol_body_str = tr("esol_callout_body", ceiling=hard_ceiling_mm if hard_ceiling_mm is not None else 0.0)
+    if hard_ceiling_mm is None:
+        esol_body_str = esol_body_str.replace("(0.0 mM)", "(N/A)")
+    raw_esol_text = f"{tr('esol_callout_title')} {esol_body_str}"
     clean_esol_tooltip = re.sub(r'</?(?:strong|em|b|i)\b[^>]*>', '', raw_esol_text, flags=re.IGNORECASE)
     clean_esol_tooltip = re.sub(r'(?:<br\s*/?>\s*){2,}', ' __ESOL_PARA__ ', clean_esol_tooltip, flags=re.IGNORECASE)
     clean_esol_tooltip = re.sub(r'<br\s*/?>', ' __ESOL_BR__ ', clean_esol_tooltip, flags=re.IGNORECASE)
@@ -994,9 +1030,12 @@ def _render_candidate_chemical_dossier(
                 help="Select a literature-tested additive to formulate and analyze"
             )
             prev_bot_t1 = st.session_state.get("last_bottom_tier1_choice", cur_b1_idx)
-            if bot_t1_choice is None:
+            if st.session_state.pop("_tier1_top_changed_this_run", False):
+                st.session_state["last_bottom_tier1_choice"] = cur_b1_idx
+            elif bot_t1_choice is None:
                 _remove_tier1_candidate_at(prev_bot_t1)
             elif bot_t1_choice != prev_bot_t1 and "last_bottom_tier1_choice" in st.session_state:
+                st.session_state["active_step2_tier_tab"] = "tier1"
                 st.session_state["last_bottom_tier1_choice"] = bot_t1_choice
                 st.session_state["selected_tier1_name"] = tier1_cands[bot_t1_choice].name
                 st.session_state["selected_additive_name"] = tier1_cands[bot_t1_choice].name
@@ -1056,6 +1095,7 @@ def _render_candidate_chemical_dossier(
             if bot_t2_choice is None:
                 _remove_tier2_candidate_at(prev_bot_t2)
             elif bot_t2_choice != prev_bot_t2 and "last_bottom_tier2_choice" in st.session_state:
+                st.session_state["active_step2_tier_tab"] = "tier2"
                 st.session_state["last_bottom_tier2_choice"] = bot_t2_choice
                 st.session_state["selected_tier2_name"] = tier2_cands[bot_t2_choice].name
                 st.session_state["selected_suggested_idx"] = bot_t2_choice
@@ -1082,14 +1122,24 @@ def _render_candidate_chemical_dossier(
                 st.session_state["last_bottom_tier2_choice"] = bot_t2_choice
 
     g_c1, g_c2, g_c3, g_c4 = st.columns(4)
-    with g_c1:
-        st.metric(tr("metric_esol_logs"), f"{esol_val:.2f} LogS", tr("metric_intrinsic_solubility"))
-    with g_c2:
-        st.metric(tr("metric_theor_sat"), f"{theor_sat_mm:.1f} mM", tr("metric_formula_math"))
-    with g_c3:
-        st.metric(tr("metric_safety_cap_max"), f"{hard_ceiling_mm:.1f} mM", tr("metric_calc_safety"))
-    with g_c4:
-        st.metric(tr("metric_precip_protection"), tr("metric_active_enforced"), tr("metric_deterministic_cap"))
+    if esol_ok and esol_val is not None and theor_sat_mm is not None and hard_ceiling_mm is not None:
+        with g_c1:
+            st.metric(tr("metric_esol_logs"), f"{esol_val:.2f} LogS", tr("metric_intrinsic_solubility"))
+        with g_c2:
+            st.metric(tr("metric_theor_sat"), format_solubility_conc(theor_sat_mm), tr("metric_formula_math"))
+        with g_c3:
+            st.metric(tr("metric_safety_cap_max"), format_solubility_conc(hard_ceiling_mm), tr("metric_calc_safety"))
+        with g_c4:
+            st.metric(tr("metric_precip_protection"), tr("metric_active_enforced"), tr("metric_deterministic_cap"))
+    else:
+        with g_c1:
+            st.metric(tr("metric_esol_logs"), "N/A", esol_reason)
+        with g_c2:
+            st.metric(tr("metric_theor_sat"), "N/A", esol_reason)
+        with g_c3:
+            st.metric(tr("metric_safety_cap_max"), "N/A", esol_reason)
+        with g_c4:
+            st.metric(tr("metric_precip_protection"), "N/A", esol_reason)
 
 
 def render_two_tier_card_deck(
@@ -1227,96 +1277,47 @@ def render_two_tier_card_deck(
     st.markdown(f'<div class="section-title">🧪 {tr("sec_step2_additive_selection")}</div>', unsafe_allow_html=True)
     st.caption(tr("sec_step2_additive_selection_desc"))
 
-    # Keep the additive card deck expanders open once expanded by the user until manually closed,
-    # even when the user selects/removes additives from the dropdown lists, turns pages, or edits candidates.
-    _sync_marker = (
-        f"{st.session_state.get('last_tier1_choice')}_"
-        f"{st.session_state.get('step2_tier1_current_page', 1)}_"
-        f"{st.session_state.get('last_suggested_choice')}_"
-        f"{st.session_state.get('step2_tier2_current_page', 1)}_"
-        f"{len(tier1_candidates)}_{len(tier2_candidates)}"
-    )
-    st.components.v1.html(
-        f"""
-        <!-- card-deck-sync: {_sync_marker} -->
-        <script>
-        (function() {{
-            const parentWin = window.parent;
-            const parentDoc = parentWin.document;
-            if (!parentWin._mapCardDeckOpenState) {{
-                parentWin._mapCardDeckOpenState = {{ tier1: false, tier2: false }};
-            }}
+    t1_tab_label = f"📚 {tr('tier1_title')} ({len(tier1_candidates)})"
+    t2_tab_label = f"✨ {tr('tier2_title')} ({len(tier2_candidates)})"
 
-            function syncCardDeckExpanders() {{
-                const slots = [
-                    {{ key: 'tier1', selector: '.st-key-step2_tier1_card_deck_expander details' }},
-                    {{ key: 'tier2', selector: '.st-key-step2_tier2_card_deck_expander details' }}
-                ];
-                slots.forEach(({{ key, selector }}) => {{
-                    const details = parentDoc.querySelector(selector);
-                    if (!details) return;
-                    const summary = details.querySelector('summary');
-                    if (!summary) return;
+    _sync_t1_clicked = st.button("Sync Tier 1", key="btn_sync_tier1_active_tab") if tier1_candidates else False
+    _sync_t2_clicked = st.button("Sync Tier 2", key="btn_sync_tier2_active_tab") if tier2_candidates else False
 
-                    if (!details.dataset.mapExpanderBound) {{
-                        details.dataset.mapExpanderBound = "true";
-
-                        summary.addEventListener('pointerdown', function() {{
-                            details.dataset.userToggling = "true";
-                        }}, true);
-                        summary.addEventListener('keydown', function(e) {{
-                            if (e.key === 'Enter' || e.key === ' ') {{
-                                details.dataset.userToggling = "true";
-                            }}
-                        }}, true);
-
-                        details.addEventListener('toggle', function() {{
-                            if (details.dataset.restoringOpen === "true") {{
-                                details.dataset.restoringOpen = "false";
-                                return;
-                            }}
-                            if (details.dataset.userToggling === "true") {{
-                                details.dataset.userToggling = "false";
-                                parentWin._mapCardDeckOpenState[key] = details.open;
-                            }} else if (!details.open && parentWin._mapCardDeckOpenState[key]) {{
-                                details.dataset.restoringOpen = "true";
-                                summary.click();
-                            }}
-                        }});
-                    }}
-
-                    if (parentWin._mapCardDeckOpenState[key] && !details.open) {{
-                        details.dataset.restoringOpen = "true";
-                        summary.click();
-                    }}
-                }});
-            }}
-
-            parentWin._syncCardDeckExpanders = syncCardDeckExpanders;
-            syncCardDeckExpanders();
-            setTimeout(syncCardDeckExpanders, 50);
-            setTimeout(syncCardDeckExpanders, 150);
-
-            if (!parentWin._mapCardDeckObserverAttached) {{
-                parentWin._mapCardDeckObserverAttached = true;
-                const observer = new MutationObserver(function() {{
-                    if (parentWin._syncCardDeckExpanders) {{
-                        parentWin._syncCardDeckExpanders();
-                    }}
-                }});
-                observer.observe(parentDoc.body, {{ childList: true, subtree: true, attributes: true, attributeFilter: ['open'] }});
-            }}
-        }})();
-        </script>
-        """,
-        height=0,
-        width=0,
+    cur_tabs_widget_val = st.session_state.get("step2_tier_tabs")
+    prev_tabs_widget_val = st.session_state.get("_last_step2_tier_tabs_val")
+    user_clicked_tier_tab = (
+        cur_tabs_widget_val in (t1_tab_label, t2_tab_label)
+        and prev_tabs_widget_val in (t1_tab_label, t2_tab_label)
+        and cur_tabs_widget_val != prev_tabs_widget_val
     )
 
-    tier_tabs = st.tabs([
-        f"📚 {tr('tier1_title')} ({len(tier1_candidates)})",
-        f"✨ {tr('tier2_title')} ({len(tier2_candidates)})",
-    ])
+    if _sync_t1_clicked:
+        st.session_state["active_step2_tier_tab"] = "tier1"
+        st.session_state["step2_tier_tabs"] = t1_tab_label
+    elif _sync_t2_clicked:
+        st.session_state["active_step2_tier_tab"] = "tier2"
+        st.session_state["step2_tier_tabs"] = t2_tab_label
+    elif user_clicked_tier_tab:
+        st.session_state["active_step2_tier_tab"] = "tier2" if cur_tabs_widget_val == t2_tab_label else "tier1"
+    else:
+        st.session_state["step2_tier_tabs"] = (
+            t2_tab_label if st.session_state.get("active_step2_tier_tab", "tier1") == "tier2" else t1_tab_label
+        )
+
+    with st.container(key="step2_two_tier_tabs_container"):
+        try:
+            tier_tabs = st.tabs(
+                [t1_tab_label, t2_tab_label],
+                key="step2_tier_tabs",
+                on_change="rerun",
+            )
+        except TypeError:
+            tier_tabs = st.tabs([t1_tab_label, t2_tab_label])
+
+    st.session_state["_last_step2_tier_tabs_val"] = st.session_state.get("step2_tier_tabs")
+    cur_tier_tab = st.session_state.get("active_step2_tier_tab", "tier1")
+    _switched_to_t1 = _sync_t1_clicked or (user_clicked_tier_tab and cur_tier_tab == "tier1")
+    _switched_to_t2 = _sync_t2_clicked or (user_clicked_tier_tab and cur_tier_tab == "tier2")
 
     # -------------------------------------------------------------------------
     # Tier 1: Mined Literature Additives (Tested Chemistries)
@@ -1356,7 +1357,7 @@ def render_two_tier_card_deck(
             _render_upload_popover(key_suffix="t1_empty", use_container_width=False)
         else:
             # 1. Quick Dropdown Menu (Prominent & Visible by Default at Top)
-            cur_active_name = st.session_state.get("selected_additive_name", "")
+            cur_active_name = st.session_state.get("selected_tier1_name") or st.session_state.get("selected_additive_name", "")
             cur_t1_idx = 0
             if cur_active_name:
                 for idx, c in enumerate(tier1_candidates):
@@ -1407,15 +1408,35 @@ def render_two_tier_card_deck(
                 _remove_top_tier1_candidate(st.session_state.get("last_tier1_choice", cur_t1_idx))
                 return
 
-            # Reactive sync on dropdown change
+            # Reactive sync on dropdown change or sub-tab switch
             prev_t1_choice = st.session_state.get("last_tier1_choice")
-            if prev_t1_choice != t1_choice or not st.session_state.get("selected_additive_name"):
-                if (prev_t1_choice is not None and prev_t1_choice != t1_choice) or "step2_tier1_current_page" not in st.session_state:
+            t1_changed = (prev_t1_choice is not None and prev_t1_choice != t1_choice)
+            picked_c = tier1_candidates[t1_choice]
+            active_add_lower = str(st.session_state.get("selected_additive_name") or "").strip().lower()
+            sel_t2_lower = str(st.session_state.get("selected_tier2_name") or "").strip().lower()
+            t2_names_lower = {c.name.strip().lower() for c in tier2_candidates if c.name}
+            t1_needs_active_sync = (
+                st.session_state.get("active_step2_tier_tab", "tier1") == "tier1"
+                and (
+                    prev_t1_choice is None
+                    or not active_add_lower
+                    or active_add_lower in t2_names_lower
+                    or (sel_t2_lower and active_add_lower == sel_t2_lower and picked_c.name.strip().lower() != sel_t2_lower)
+                )
+            )
+            if not _switched_to_t2 and (
+                t1_changed
+                or _switched_to_t1
+                or t1_needs_active_sync
+            ):
+                if t1_changed:
+                    st.session_state["_tier1_top_changed_this_run"] = True
+                st.session_state["active_step2_tier_tab"] = "tier1"
+                if t1_changed or "step2_tier1_current_page" not in st.session_state:
                     st.session_state["step2_tier1_current_page"] = (t1_choice // 6) + 1
                 st.session_state["last_tier1_choice"] = t1_choice
                 st.session_state["last_bottom_tier1_choice"] = t1_choice
                 st.session_state["pending_tier1_bottom_choice"] = t1_choice
-                picked_c = tier1_candidates[t1_choice]
                 c_smi = picked_c.smiles
                 if not c_smi:
                     clean_base = re.sub(r'\s*\([^)]*\)\s*$', '', picked_c.name).strip().lower()
@@ -1430,16 +1451,32 @@ def render_two_tier_card_deck(
                 st.session_state["custom_additive_name"] = picked_c.name
                 st.session_state["custom_smiles"] = c_smi
                 st.session_state["tab2_mol_select"] = picked_c.name
+                st.session_state["_last_inspect_mol_select"] = picked_c.name
+                st.session_state["_last_inspect_mol_widget"] = picked_c.name
+                st.session_state["_last_sidebar_additive_widget"] = picked_c.name
                 st.session_state["tab2_custom_additive_name_input"] = picked_c.name
                 st.session_state["tab2_custom_smiles_input"] = c_smi
                 if picked_c.reported_concentration is not None:
-                    st.session_state["published_conc_input"] = float(picked_c.reported_concentration)
+                    conv_c, _ = convert_concentration_to_mM(
+                        picked_c.reported_concentration,
+                        picked_c.reported_concentration_unit,
+                        mw=picked_c.molecular_weight,
+                    )
+                    st.session_state["published_conc_input"] = float(conv_c) if conv_c is not None else float(picked_c.reported_concentration)
                 else:
                     st.session_state["published_conc_input"] = 15.0
-                if picked_c.parent_baseline_electrolyte and "unspecified" not in str(picked_c.parent_baseline_electrolyte).lower() and "not reported" not in str(picked_c.parent_baseline_electrolyte).lower():
+                is_unspec_salt_t1 = (
+                    not picked_c.parent_baseline_electrolyte or
+                    "unspecified" in str(picked_c.parent_baseline_electrolyte).lower() or
+                    "not reported" in str(picked_c.parent_baseline_electrolyte).lower()
+                )
+                if not is_unspec_salt_t1:
                     st.session_state["parent_electrolyte_input"] = picked_c.parent_baseline_electrolyte
                 else:
                     st.session_state["parent_electrolyte_input"] = "2 M ZnSO4"
+                st.session_state["is_active_baseline_unspecified"] = (
+                    picked_c.reported_concentration is None or is_unspec_salt_t1
+                )
 
                 sync_custom_formulation_pipeline(
                     additive_name=picked_c.name,
@@ -1454,8 +1491,12 @@ def render_two_tier_card_deck(
                     total_volume_uL=total_vol_ul,
                     session_state=st.session_state,
                 )
+                if t1_changed or _switched_to_t1:
+                    st.rerun()
             else:
                 st.session_state["last_tier1_choice"] = t1_choice
+                if tier1_candidates:
+                    st.session_state["selected_tier1_name"] = tier1_candidates[t1_choice].name
 
             # ✏️ Edit Additive Popover
             with col_t1_edit:
@@ -1477,11 +1518,20 @@ def render_two_tier_card_deck(
                         key=f"edit_salt_in_{t1_choice}"
                     )
 
-                    cur_conc_val = float(picked_cand_t1.reported_concentration if picked_cand_t1.reported_concentration is not None else 15.0)
+                    if picked_cand_t1.reported_concentration is not None:
+                        _conv_ed, _ = convert_concentration_to_mM(
+                            picked_cand_t1.reported_concentration,
+                            picked_cand_t1.reported_concentration_unit,
+                            mw=picked_cand_t1.molecular_weight,
+                        )
+                        raw_edit_c = float(_conv_ed) if _conv_ed is not None else float(picked_cand_t1.reported_concentration)
+                    else:
+                        raw_edit_c = 15.0
+                    cur_conc_val = min(max(raw_edit_c, 0.01), 10000.0)
                     edit_conc = st.number_input(
                         tr("edit_concentration_label"),
                         value=cur_conc_val,
-                        min_value=0.1,
+                        min_value=0.01,
                         max_value=10000.0,
                         step=5.0,
                         key=f"edit_conc_in_{t1_choice}"
@@ -1549,6 +1599,7 @@ def render_two_tier_card_deck(
                         st.session_state["custom_additive_name"] = updated_c.name
                         st.session_state["custom_smiles"] = updated_c.smiles
                         st.session_state["tab2_mol_select"] = updated_c.name
+                        st.session_state["_last_inspect_mol_select"] = updated_c.name
                         st.session_state["tab2_custom_additive_name_input"] = updated_c.name
                         st.session_state["tab2_custom_smiles_input"] = updated_c.smiles
                         st.session_state["published_conc_input"] = float(updated_c.reported_concentration)
@@ -1628,15 +1679,15 @@ def render_two_tier_card_deck(
                         formula_disp = f' <span style="font-family: monospace; font-size: 0.88rem; color: #1f77b4;">({fmt_formula})</span>' if fmt_formula else ""
                         cur_active_name = st.session_state.get("selected_additive_name", "")
                         is_active = bool(cand_name and cur_active_name and cand_name.lower() == cur_active_name.lower())
-                        cand_has_esol = (cand.logs is not None and cand.logs > -10)
-                        if cand_has_esol:
+                        cand_has_esol, _ = is_esol_applicable(cand_smiles, cand.logs)
+                        if cand_has_esol and cand.logs is not None:
                             theor_sat_mm = round((10 ** cand.logs) * 1000.0, 1)
                             safety_cap_mm = round(0.80 * theor_sat_mm, 1)
-                            esol_disp = f"{theor_sat_mm:.1f} mM"
-                            safety_disp = f'<span style="color: #2ca02c; font-weight: 600;">{safety_cap_mm:.1f} mM</span>'
+                            esol_disp = format_solubility_conc(theor_sat_mm)
+                            safety_disp = f'<span style="color: #2ca02c; font-weight: 600;">{format_solubility_conc(safety_cap_mm)}</span>'
                         else:
-                            esol_disp = f'<em>{tr("card_esol_uncalculated")}</em>'
-                            safety_disp = f'<em>{tr("card_esol_uncalculated")}</em>'
+                            esol_disp = "<em>N/A</em>"
+                            safety_disp = "<em>N/A</em>"
 
                         if cand.reported_concentration is not None:
                             conc_disp = f'<span style="font-weight: 600;">{cand.reported_concentration:g} {cand.reported_concentration_unit or "mM"}</span>'
@@ -1694,6 +1745,7 @@ def render_two_tier_card_deck(
                             use_container_width=True,
                             help=f"Select {cand_name} for formulation planning"
                         ):
+                            st.session_state["active_step2_tier_tab"] = "tier1"
                             st.session_state["selected_tier1_name"] = cand.name
                             st.session_state["selected_additive_name"] = cand.name
                             st.session_state["last_tier1_choice"] = idx
@@ -1781,12 +1833,23 @@ def render_two_tier_card_deck(
                 return
 
             prev_t2_choice = st.session_state.get("last_suggested_choice", cur_t2_idx)
-            if prev_t2_choice != t2_choice and "last_suggested_choice" in st.session_state:
+            picked_cand = tier2_candidates[t2_choice]
+            t2_changed = (prev_t2_choice != t2_choice and "last_suggested_choice" in st.session_state)
+            active_add_lower_t2 = str(st.session_state.get("selected_additive_name") or "").strip().lower()
+            t2_needs_active_sync = (
+                st.session_state.get("active_step2_tier_tab") == "tier2"
+                and (
+                    "last_suggested_choice" not in st.session_state
+                    or not active_add_lower_t2
+                    or active_add_lower_t2 != picked_cand.name.strip().lower()
+                )
+            )
+            if not _switched_to_t1 and (t2_changed or _switched_to_t2 or t2_needs_active_sync):
+                st.session_state["active_step2_tier_tab"] = "tier2"
                 st.session_state["last_suggested_choice"] = t2_choice
                 st.session_state["pending_tier2_bottom_choice"] = t2_choice
                 st.session_state["selected_suggested_idx"] = t2_choice
                 st.session_state["step2_tier2_current_page"] = (t2_choice // 6) + 1
-                picked_cand = tier2_candidates[t2_choice]
                 st.session_state["selected_tier2_name"] = picked_cand.name
                 st.session_state["is_active_baseline_unspecified"] = (
                     picked_cand.reported_concentration is None or
@@ -1803,10 +1866,11 @@ def render_two_tier_card_deck(
                     total_vol_ul=total_vol_ul,
                     published_conc_input=published_conc_input,
                     parent_electrolyte_input=parent_electrolyte_input,
+                    show_toast=not (_switched_to_t2 or t2_needs_active_sync),
                 )
             else:
                 st.session_state["last_suggested_choice"] = t2_choice
-                if not st.session_state.get("selected_tier2_name") and tier2_candidates:
+                if tier2_candidates:
                     st.session_state["selected_tier2_name"] = tier2_candidates[t2_choice].name
 
             # 2. Detailed Card Deck (Collapsed by default in an Expander, stays open across dropdown changes)
@@ -1858,8 +1922,15 @@ def render_two_tier_card_deck(
                         formula_disp = f' <span style="font-family: monospace; font-size: 0.88rem; color: #1f77b4;">({fmt_formula})</span>' if fmt_formula else ""
                         cur_active_name = st.session_state.get("selected_additive_name", "")
                         is_active = bool(cand_name and cur_active_name and cand_name.lower() == cur_active_name.lower())
-                        theor_sat_mm = round((10 ** (cand.logs if cand.logs is not None else -2.0)) * 1000.0, 1) if (cand.logs is not None and cand.logs > -10) else 0.0
-                        safety_cap_mm = round(0.80 * theor_sat_mm, 1)
+                        cand_has_esol, _ = is_esol_applicable(cand_smiles, cand.logs)
+                        if cand_has_esol and cand.logs is not None:
+                            theor_sat_mm = round((10 ** cand.logs) * 1000.0, 1)
+                            safety_cap_mm = round(0.80 * theor_sat_mm, 1)
+                            esol_t2_disp = format_solubility_conc(theor_sat_mm)
+                            safety_t2_disp = f'<span style="color: #2ca02c; font-weight: 600;">{format_solubility_conc(safety_cap_mm)}</span>'
+                        else:
+                            esol_t2_disp = "<em>N/A</em>"
+                            safety_t2_disp = "<em>N/A</em>"
                         sim_score = cand.similarity_score if cand.similarity_score is not None else 0.5
                         source_lbl = "PubChem Live Search" if "PubChem" in cand.similarity_metric else "Curated Scaffolds"
                         compat_note = cand.electrolyte_compatibility_note or "Compatible across zinc salt systems"
@@ -1880,7 +1951,7 @@ def render_two_tier_card_deck(
                                 • <strong>{tr('card_tanimoto_similarity')}:</strong> <span class="badge-tag badge-purple">{sim_score:.2f}</span> | <strong>{tr('card_source')}:</strong> <span class="badge-tag badge-blue">{source_lbl}</span>
                             </div>
                             <div style="font-size: 0.86rem; color: inherit; margin-bottom: 2px;">
-                                • <strong>{tr('card_delaney_esol')}:</strong> {theor_sat_mm:.1f} mM | <strong>{tr('card_safety_cap')}:</strong> <span style="color: #2ca02c; font-weight: 600;">{safety_cap_mm:.1f} mM</span>
+                                • <strong>{tr('card_delaney_esol')}:</strong> {esol_t2_disp} | <strong>{tr('card_safety_cap')}:</strong> {safety_t2_disp}
                             </div>
                             <div class="candidate-card-clamp" style="font-size: 0.82rem; color: inherit;">
                                 • <strong>{tr('card_compat')}:</strong> <em>{clean_scientific_text(compat_note)}</em>
@@ -1896,6 +1967,7 @@ def render_two_tier_card_deck(
                             use_container_width=True,
                             help=f"Select {cand_name} for formulation planning"
                         ):
+                            st.session_state["active_step2_tier_tab"] = "tier2"
                             st.session_state["selected_tier2_name"] = cand.name
                             st.session_state["selected_suggested_idx"] = idx
                             st.session_state["last_suggested_choice"] = idx
@@ -1932,4 +2004,111 @@ def render_two_tier_card_deck(
                 cur_lang=cur_lang,
                 key_prefix="tier2",
             )
+
+    # Emit client-side sub-tab synchronization and expander state persistence AFTER both tier tabs
+    # have updated st.session_state so _mapServerTierState always reflects the latest server state.
+    _active_tier_tab_state = st.session_state.get("active_step2_tier_tab", "tier1")
+    _cur_active_add_name = (st.session_state.get("selected_additive_name") or "").strip().lower()
+    _cur_t1_sel_name = (st.session_state.get("selected_tier1_name") or "").strip().lower()
+    if not _cur_t1_sel_name and tier1_candidates:
+        _cur_t1_sel_name = tier1_candidates[0].name.strip().lower()
+    _cur_t2_sel_name = (st.session_state.get("selected_tier2_name") or "").strip().lower()
+    if not _cur_t2_sel_name and tier2_candidates:
+        _cur_t2_sel_name = tier2_candidates[0].name.strip().lower()
+
+    _sync_marker = (
+        f"{st.session_state.get('last_tier1_choice')}_"
+        f"{st.session_state.get('step2_tier1_current_page', 1)}_"
+        f"{st.session_state.get('last_suggested_choice')}_"
+        f"{st.session_state.get('step2_tier2_current_page', 1)}_"
+        f"{len(tier1_candidates)}_{len(tier2_candidates)}_"
+        f"{_active_tier_tab_state}_{_cur_active_add_name}_{_cur_t1_sel_name}_{_cur_t2_sel_name}"
+    )
+    st.components.v1.html(
+        f"""
+        <!-- card-deck-sync: {_sync_marker} -->
+        <script>
+        (function() {{
+            const parentWin = window.parent;
+            const parentDoc = parentWin.document;
+            if (!parentWin._mapCardDeckOpenState) {{
+                parentWin._mapCardDeckOpenState = {{ tier1: false, tier2: false }};
+            }}
+            parentWin._mapServerTierState = {{
+                activeTab: "{_active_tier_tab_state}",
+                activeAdditive: {_cur_active_add_name!r},
+                tier1Name: {_cur_t1_sel_name!r},
+                tier2Name: {_cur_t2_sel_name!r}
+            }};
+
+            function syncCardDeckExpanders() {{
+                if (parentWin._mapTierTabsClickListener) {{
+                    parentDoc.removeEventListener('click', parentWin._mapTierTabsClickListener, true);
+                    parentWin._mapTierTabsClickListener = null;
+                }}
+                const slots = [
+                    {{ key: 'tier1', selector: '.st-key-step2_tier1_card_deck_expander details' }},
+                    {{ key: 'tier2', selector: '.st-key-step2_tier2_card_deck_expander details' }}
+                ];
+                slots.forEach(({{ key, selector }}) => {{
+                    const details = parentDoc.querySelector(selector);
+                    if (!details) return;
+                    const summary = details.querySelector('summary');
+                    if (!summary) return;
+
+                    if (!details.dataset.mapExpanderBound) {{
+                        details.dataset.mapExpanderBound = "true";
+
+                        summary.addEventListener('pointerdown', function() {{
+                            details.dataset.userToggling = "true";
+                        }}, true);
+                        summary.addEventListener('keydown', function(e) {{
+                            if (e.key === 'Enter' || e.key === ' ') {{
+                                details.dataset.userToggling = "true";
+                            }}
+                        }}, true);
+
+                        details.addEventListener('toggle', function() {{
+                            if (details.dataset.restoringOpen === "true") {{
+                                details.dataset.restoringOpen = "false";
+                                return;
+                            }}
+                            if (details.dataset.userToggling === "true") {{
+                                details.dataset.userToggling = "false";
+                                parentWin._mapCardDeckOpenState[key] = details.open;
+                            }} else if (!details.open && parentWin._mapCardDeckOpenState[key]) {{
+                                details.dataset.restoringOpen = "true";
+                                summary.click();
+                            }}
+                        }});
+                    }}
+
+                    if (parentWin._mapCardDeckOpenState[key] && !details.open) {{
+                        details.dataset.restoringOpen = "true";
+                        summary.click();
+                    }}
+                }});
+            }}
+
+            parentWin._syncCardDeckExpanders = syncCardDeckExpanders;
+            syncCardDeckExpanders();
+            setTimeout(syncCardDeckExpanders, 50);
+            setTimeout(syncCardDeckExpanders, 150);
+
+            if (parentWin._mapCardDeckObserver) {{
+                try {{ parentWin._mapCardDeckObserver.disconnect(); }} catch (e) {{}}
+            }}
+            const observer = new MutationObserver(function() {{
+                if (parentWin._syncCardDeckExpanders) {{
+                    parentWin._syncCardDeckExpanders();
+                }}
+            }});
+            observer.observe(parentDoc.body, {{ childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'aria-selected'] }});
+            parentWin._mapCardDeckObserver = observer;
+        }})();
+        </script>
+        """,
+        height=0,
+        width=0,
+    )
 

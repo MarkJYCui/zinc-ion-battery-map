@@ -73,6 +73,7 @@ from discovery.similarity import (
     RDKitSimilarityEngine,
     SUPPORTED_SALTS,
     calculate_delaney_esol,
+    is_esol_applicable,
     detect_functional_groups,
     assess_electrolyte_compatibility,
     generate_chemoinformatic_rationale,
@@ -176,6 +177,8 @@ from discovery.formula_utils import (
     get_chemical_formula,
     format_chem_formula,
     normalize_condition_key,
+    convert_concentration_to_mM,
+    format_solubility_conc,
 )
 
 
@@ -432,22 +435,31 @@ with st.sidebar:
         cur_sel_name = st.session_state.get("selected_additive_name", additive_pool_names[0])
         cur_sel_idx = additive_pool_names.index(cur_sel_name) if cur_sel_name in additive_pool_names else 0
 
-        selected_additive_name = st.selectbox(
+        sidebar_sel_name = st.selectbox(
             tr("additive_to_test"),
             additive_pool_names,
             index=cur_sel_idx,
             help=tr("additive_to_test_help"),
         )
-        st.session_state["selected_additive_name"] = selected_additive_name
+        prev_sb_widget = st.session_state.get("_last_sidebar_additive_widget")
+        prev_sb_pool_len = st.session_state.get("_last_sidebar_pool_len", 0)
+        st.session_state["_last_sidebar_additive_widget"] = sidebar_sel_name
+        st.session_state["_last_sidebar_pool_len"] = len(additive_pool_names)
+        if prev_sb_widget is None or (sidebar_sel_name != prev_sb_widget and len(additive_pool_names) == prev_sb_pool_len):
+            selected_additive_name = sidebar_sel_name
+            st.session_state["selected_additive_name"] = selected_additive_name
+        else:
+            selected_additive_name = st.session_state.get("selected_additive_name") or sidebar_sel_name
+            st.session_state["selected_additive_name"] = selected_additive_name
 
         matching_additive = next((a for a in all_additives if a["name"] == selected_additive_name), all_additives[0])
         selected_smiles = matching_additive["smiles"]
 
-        default_conc = float(st.session_state.get("published_conc_input", 15.0))
+        default_conc = min(max(float(st.session_state.get("published_conc_input", 15.0)), 0.01), 10000.0)
         published_conc_input = st.number_input(
             tr("reported_conc"),
-            min_value=0.5,
-            max_value=1000.0,
+            min_value=0.01,
+            max_value=10000.0,
             value=default_conc,
             step=1.0,
             help=tr("reported_conc_help"),
@@ -1126,6 +1138,26 @@ with tab_step1:
         f"📄 {tr('subtab_batch_pdf')}",
     ])
 
+    if st.session_state.pop("_close_gemini_popover", False):
+        st.components.v1.html(
+            """
+            <script>
+            (function() {
+                try {
+                    const parentDoc = window.parent.document;
+                    const openBtns = parentDoc.querySelectorAll('[data-testid="stPopoverButton"][aria-expanded="true"], [data-testid="stPopover"] button[aria-expanded="true"]');
+                    openBtns.forEach(function(btn) { btn.click(); });
+                    const escEvent = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true });
+                    parentDoc.dispatchEvent(escEvent);
+                    if (parentDoc.body) parentDoc.body.dispatchEvent(escEvent);
+                } catch(e) {}
+            })();
+            </script>
+            """,
+            height=0,
+            width=0,
+        )
+
     gemini_key_ver = st.session_state.get("gemini_key_version", 0)
     gemini_model_options_map = {
         tr("gemini_model_35_flash_lite"): "gemini-3.5-flash-lite",
@@ -1372,7 +1404,9 @@ with tab_step1:
         with col_gemini:
             has_online_gemini = bool(st.session_state.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY"))
             popover_label = f"🔑 {tr('gemini_api_key_label')} (✅ {tr('gemini_badge_active')})" if has_online_gemini else f"🔑 {tr('gemini_api_key_label')}"
-            with st.popover(popover_label, use_container_width=True, key="online_search_gemini_popover", help=tr("gemini_popover_button_help")):
+            gemini_pop_ver = st.session_state.get("gemini_popover_version", 0)
+            online_pop_key = f"online_search_gemini_popover_{gemini_pop_ver}" if gemini_pop_ver > 0 else "online_search_gemini_popover"
+            with st.popover(popover_label, use_container_width=True, key=online_pop_key, help=tr("gemini_popover_button_help")):
                 if has_online_gemini:
                     active_pop_model = st.session_state.get("gemini_selected_model", "gemini-3.5-flash-lite")
                     st.markdown(
@@ -1438,15 +1472,18 @@ with tab_step1:
                             if not (stripped_k.startswith("AIzaSy") and len(stripped_k) >= 30):
                                 st.warning(tr("invalid_gemini_key_format_error"))
                             st.session_state["gemini_api_key"] = stripped_k
-                            st.session_state["_close_gemini_popover"] = True
                             st.toast(tr("key_saved_toast"), icon="🔑")
                         else:
                             st.session_state["gemini_api_key"] = ""
+                        st.session_state["gemini_popover_version"] = gemini_pop_ver + 1
+                        st.session_state["_close_gemini_popover"] = True
                         st.rerun()
                 with col_k_clear:
                     if st.button(f"🗑️ {tr('btn_clear_key')}", key="btn_clear_online_gemini_key", use_container_width=True):
                         st.session_state["gemini_api_key"] = ""
                         st.session_state["gemini_key_version"] = gemini_key_ver + 1
+                        st.session_state["gemini_popover_version"] = gemini_pop_ver + 1
+                        st.session_state["_close_gemini_popover"] = True
                         st.toast(tr("key_cleared_toast"), icon="🗑️")
                         st.rerun()
 
@@ -1696,8 +1733,17 @@ with tab_step1:
                                 if len(all_unique_additives) >= 1:
                                     first_add = all_unique_additives[0]
                                     opt_c = getattr(first_add, "optimal_concentration", None)
-                                    ext_conc = float(opt_c.value) if (opt_c and getattr(opt_c, "value", None) is not None) else 10.0
-                                    toast_conc = f"{ext_conc:.1f} mM" if (opt_c and getattr(opt_c, "value", None) is not None) else f"{ext_conc:.1f} mM (default)"
+                                    if opt_c and getattr(opt_c, "value", None) is not None:
+                                        _conv_toast_c, _ = convert_concentration_to_mM(
+                                            opt_c.value,
+                                            getattr(opt_c, "unit", None),
+                                            raw_text=getattr(opt_c, "raw_text", None),
+                                        )
+                                        ext_conc = float(_conv_toast_c) if _conv_toast_c is not None else float(opt_c.value)
+                                        toast_conc = f"{ext_conc:.1f} mM"
+                                    else:
+                                        ext_conc = 10.0
+                                        toast_conc = f"{ext_conc:.1f} mM (default)"
                                     bc = getattr(first_add, "battery_context", None)
                                     ext_salt = (bc.baseline_electrolyte if (bc and getattr(bc, "baseline_electrolyte", None)) else "2 M ZnSO₄")
                                     st.session_state["last_extracted_notice"] = tr(
@@ -2087,7 +2133,9 @@ with tab_step1:
         with col_act3:
             has_batch_gemini = bool(st.session_state.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY"))
             batch_popover_label = f"🔑 {tr('gemini_api_key_label')} (✅ {tr('gemini_badge_active')})" if has_batch_gemini else f"🔑 {tr('gemini_api_key_label')}"
-            with st.popover(batch_popover_label, use_container_width=True, key="batch_pdf_gemini_popover", help=tr("gemini_popover_button_help")):
+            gemini_pop_ver = st.session_state.get("gemini_popover_version", 0)
+            batch_pop_key = f"batch_pdf_gemini_popover_{gemini_pop_ver}" if gemini_pop_ver > 0 else "batch_pdf_gemini_popover"
+            with st.popover(batch_popover_label, use_container_width=True, key=batch_pop_key, help=tr("gemini_popover_button_help")):
                 if has_batch_gemini:
                     active_pop_model = st.session_state.get("gemini_selected_model", "gemini-3.5-flash-lite")
                     st.markdown(
@@ -2153,15 +2201,18 @@ with tab_step1:
                             if not (stripped_bk.startswith("AIzaSy") and len(stripped_bk) >= 30):
                                 st.warning(tr("invalid_gemini_key_format_error"))
                             st.session_state["gemini_api_key"] = stripped_bk
-                            st.session_state["_close_gemini_popover"] = True
                             st.toast(tr("key_saved_toast"), icon="🔑")
                         else:
                             st.session_state["gemini_api_key"] = ""
+                        st.session_state["gemini_popover_version"] = gemini_pop_ver + 1
+                        st.session_state["_close_gemini_popover"] = True
                         st.rerun()
                 with col_bk_clear:
                     if st.button(f"🗑️ {tr('btn_clear_key')}", key="btn_clear_batch_gemini_key", use_container_width=True):
                         st.session_state["gemini_api_key"] = ""
                         st.session_state["gemini_key_version"] = gemini_key_ver + 1
+                        st.session_state["gemini_popover_version"] = gemini_pop_ver + 1
+                        st.session_state["_close_gemini_popover"] = True
                         st.toast(tr("key_cleared_toast"), icon="🗑️")
                         st.rerun()
 
@@ -2399,11 +2450,13 @@ with tab_step1:
                 if sugg:
                     sugg_formula = format_chem_formula(get_chemical_formula(sugg.smiles, sugg.name))
                     source_badge = '<span class="badge-tag badge-teal">PubChem Live</span>' if 'PubChem' in sugg.similarity_metric else '<span class="badge-tag badge-teal">Curated Database</span>'
+                    sugg_esol_ok, _ = is_esol_applicable(sugg.smiles, sugg.logs) if sugg.smiles else (False, "")
+                    sugg_logs_disp = f"{sugg.logs:.2f}" if (sugg.logs is not None and sugg_esol_ok) else "N/A"
                     sugg_section_html = (
                         f'<div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed rgba(128,128,128,0.3); font-size: 0.88rem;">'
                         f'✨ <strong>{tr("suggested_analogue_card_label")}:</strong> <strong>{sugg.name}</strong> ({sugg_formula}) {source_badge} '
                         f'— <span class="badge-tag badge-purple">Tanimoto: {sugg.similarity_score:.2f}</span> '
-                        f'<span class="badge-tag badge-blue">Delaney ESOL LogS: {sugg.logs:.2f}</span>'
+                        f'<span class="badge-tag badge-blue">Delaney ESOL LogS: {sugg_logs_disp}</span>'
                         f'<div style="font-size: 0.80rem; margin-top: 2px;"><em>{clean_scientific_text(sugg.rationale or "")}</em></div>'
                         f'</div>'
                     )
@@ -2440,14 +2493,34 @@ with tab_step1:
                         help=tr("btn_apply_pdf_additive_help")
                     ):
                         ext_name = add.name
-                        ext_conc = float(add.optimal_concentration.value) if (add.optimal_concentration and add.optimal_concentration.value is not None) else 15.0
-                        raw_salt_apply = add.battery_context.baseline_electrolyte if (add.battery_context and add.battery_context.baseline_electrolyte) else "Unspecified / Not reported"
-                        is_unspec_apply = (not raw_salt_apply or "unspecified" in str(raw_salt_apply).lower() or "not reported" in str(raw_salt_apply).lower())
-                        ext_salt = selected_target_salt if is_unspec_apply else format_chem_formula(raw_salt_apply)
                         ext_smiles = add.smiles
                         if not ext_smiles:
                             matching = next((a["smiles"] for a in CURATED_ZIB_ADDITIVES if a["name"].lower() == ext_name.lower()), None)
-                            ext_smiles = matching or "CC[N+](CC)(CC)CC.[Br-]"
+                            ext_smiles = matching or ""
+                        sim_engine = get_similarity_engine()
+                        desc = sim_engine.calculate_descriptors(ext_smiles) if ext_smiles else None
+                        mw_pdf = desc["molecular_weight"] if desc else None
+
+                        has_rep_conc = bool(add.optimal_concentration and add.optimal_concentration.value is not None)
+                        if has_rep_conc:
+                            _conv_pdf_c, _conv_pdf_u = convert_concentration_to_mM(
+                                add.optimal_concentration.value,
+                                add.optimal_concentration.unit,
+                                mw=mw_pdf,
+                                raw_text=add.optimal_concentration.raw_text,
+                            )
+                            rep_conc_val = float(_conv_pdf_c) if _conv_pdf_c is not None else float(add.optimal_concentration.value)
+                            rep_conc_unit = _conv_pdf_u or "mM"
+                            ext_conc = rep_conc_val
+                        else:
+                            rep_conc_val = None
+                            rep_conc_unit = None
+                            ext_conc = 15.0
+
+                        raw_salt_apply = add.battery_context.baseline_electrolyte if (add.battery_context and add.battery_context.baseline_electrolyte) else "Unspecified / Not reported"
+                        is_unspec_apply = (not raw_salt_apply or "unspecified" in str(raw_salt_apply).lower() or "not reported" in str(raw_salt_apply).lower())
+                        ext_salt = "2 M ZnSO4" if is_unspec_apply else format_chem_formula(raw_salt_apply)
+                        cand_salt_store = "Unspecified / Not reported" if is_unspec_apply else format_chem_formula(raw_salt_apply)
 
                         custom_list = st.session_state.get("custom_additives", [])
                         if not any(a["name"].lower() == ext_name.lower() for a in CURATED_ZIB_ADDITIVES + custom_list):
@@ -2457,8 +2530,6 @@ with tab_step1:
                         existing_t1 = st.session_state.get("mined_literature_additives", [])
                         found_t1 = next((c for c in existing_t1 if c.name.lower() == ext_name.lower()), None)
                         if not found_t1:
-                            sim_engine = get_similarity_engine()
-                            desc = sim_engine.calculate_descriptors(ext_smiles) if ext_smiles else None
                             esol = desc["logs"] if desc and "logs" in desc else None
                             new_t1 = CandidateMolecule(
                                 name=ext_name,
@@ -2472,9 +2543,9 @@ with tab_step1:
                                 hbd=desc["hbd"] if desc else 0,
                                 hba=desc["hba"] if desc else 0,
                                 rotatable_bonds=desc["rotatable_bonds"] if desc else 0,
-                                reported_concentration=ext_conc,
-                                reported_concentration_unit="mM",
-                                parent_baseline_electrolyte=ext_salt,
+                                reported_concentration=rep_conc_val,
+                                reported_concentration_unit=rep_conc_unit,
+                                parent_baseline_electrolyte=cand_salt_store,
                                 is_literature_additive=True,
                                 rationale=f"Extracted from batch literature PDF: {fname}",
                             )
@@ -2483,12 +2554,14 @@ with tab_step1:
                         else:
                             found_t1.similarity_metric = "Batch PDF Ingestion"
                             found_t1.rationale = f"Extracted from batch literature PDF: {fname}"
-                            if ext_conc:
-                                found_t1.reported_concentration = ext_conc
-                            if ext_salt:
-                                found_t1.parent_baseline_electrolyte = ext_salt
+                            found_t1.reported_concentration = rep_conc_val
+                            found_t1.reported_concentration_unit = rep_conc_unit
+                            found_t1.parent_baseline_electrolyte = cand_salt_store
 
+                        st.session_state["active_step2_tier_tab"] = "tier1"
+                        st.session_state["is_active_baseline_unspecified"] = (not has_rep_conc or is_unspec_apply)
                         st.session_state["tab2_mol_select"] = ext_name
+                        st.session_state["_last_inspect_mol_select"] = ext_name
                         st.session_state["selected_additive_name"] = ext_name
                         st.session_state["selected_tier1_name"] = ext_name
                         for t1_i, c in enumerate(st.session_state.get("mined_literature_additives", [])):
@@ -2521,7 +2594,7 @@ with tab_step1:
                             session_state=st.session_state,
                         )
                         st.session_state["bridged_additive_name"] = ext_name
-                        toast_pdf_conc = f"{ext_conc:.1f} mM" if (add.optimal_concentration and add.optimal_concentration.value is not None) else f"{ext_conc:.1f} mM (default)"
+                        toast_pdf_conc = f"{ext_conc:.1f} mM" if has_rep_conc else f"{ext_conc:.1f} mM (assumed)"
                         st.session_state["last_extracted_notice"] = tr("extraction_success_toast", name=ext_name, conc=toast_pdf_conc, parent=format_chem_formula(ext_salt))
                         st.rerun()
 
@@ -2538,10 +2611,20 @@ with tab_step1:
                                 custom_list.append({"name": sugg.name, "smiles": sugg.smiles})
                                 st.session_state["custom_additives"] = custom_list
 
-                            sugg_conc = float(add.optimal_concentration.value) if (add.optimal_concentration and add.optimal_concentration.value is not None) else 15.0
+                            has_sugg_conc = bool(add.optimal_concentration and add.optimal_concentration.value is not None)
+                            if has_sugg_conc:
+                                _conv_s_c, _ = convert_concentration_to_mM(
+                                    add.optimal_concentration.value,
+                                    add.optimal_concentration.unit,
+                                    mw=sugg.molecular_weight,
+                                    raw_text=add.optimal_concentration.raw_text,
+                                )
+                                sugg_conc = float(_conv_s_c) if _conv_s_c is not None else float(add.optimal_concentration.value)
+                            else:
+                                sugg_conc = 15.0
                             raw_salt_sugg = add.battery_context.baseline_electrolyte if (add.battery_context and add.battery_context.baseline_electrolyte) else "Unspecified / Not reported"
                             is_unspec_sugg = (not raw_salt_sugg or "unspecified" in str(raw_salt_sugg).lower() or "not reported" in str(raw_salt_sugg).lower())
-                            sugg_salt = selected_target_salt if is_unspec_sugg else format_chem_formula(raw_salt_sugg)
+                            sugg_salt = "2 M ZnSO4" if is_unspec_sugg else format_chem_formula(raw_salt_sugg)
 
                             existing_t2 = st.session_state.get("ai_suggested_additives", [])
                             found_t2 = next((c for c in existing_t2 if c.name.lower() == sugg.name.lower()), None)
@@ -2549,6 +2632,9 @@ with tab_step1:
                                 existing_t2.insert(0, sugg)
                                 st.session_state["ai_suggested_additives"] = existing_t2
                                 st.session_state["suggested_candidates"] = existing_t2
+
+                            st.session_state["active_step2_tier_tab"] = "tier2"
+                            st.session_state["is_active_baseline_unspecified"] = (not has_sugg_conc or is_unspec_sugg)
 
                             st.session_state["tab2_mol_select"] = sugg.name
                             st.session_state["selected_additive_name"] = sugg.name
@@ -2691,30 +2777,35 @@ with tab_step2:
             mol_options,
             index=cur_tab2_idx,
         )
-        prev_inspect_mol = st.session_state.get("_last_inspect_mol_select")
-        st.session_state["_last_inspect_mol_select"] = selected_mol_name
-        if prev_inspect_mol is None or selected_mol_name != prev_inspect_mol:
+        prev_inspect_mol = st.session_state.get("_last_inspect_mol_widget")
+        prev_inspect_len = st.session_state.get("_last_inspect_mol_opts_len", 0)
+        st.session_state["_last_inspect_mol_widget"] = selected_mol_name
+        st.session_state["_last_inspect_mol_opts_len"] = len(mol_options)
+        if prev_inspect_mol is None:
+            if not st.session_state.get("selected_additive_name"):
+                st.session_state["tab2_mol_select"] = selected_mol_name
+                st.session_state["selected_additive_name"] = selected_mol_name
+        elif selected_mol_name != prev_inspect_mol and len(mol_options) == prev_inspect_len:
             st.session_state["tab2_mol_select"] = selected_mol_name
             st.session_state["selected_additive_name"] = selected_mol_name
-            if prev_inspect_mol is not None and selected_mol_name != prev_inspect_mol:
-                for t1_i, c in enumerate(st.session_state.get("mined_literature_additives", [])):
-                    if c.name.lower() == selected_mol_name.lower():
-                        st.session_state["selected_tier1_name"] = c.name
-                        st.session_state["last_tier1_choice"] = t1_i
-                        st.session_state["last_bottom_tier1_choice"] = t1_i
-                        st.session_state["pending_tier1_choice"] = t1_i
-                        st.session_state["pending_tier1_bottom_choice"] = t1_i
-                        st.session_state["step2_tier1_current_page"] = (t1_i // 6) + 1
-                        break
-                for t2_i, c in enumerate(st.session_state.get("ai_suggested_additives", [])):
-                    if c.name.lower() == selected_mol_name.lower():
-                        st.session_state["selected_tier2_name"] = c.name
-                        st.session_state["last_suggested_choice"] = t2_i
-                        st.session_state["last_bottom_tier2_choice"] = t2_i
-                        st.session_state["pending_tier2_choice"] = t2_i
-                        st.session_state["pending_tier2_bottom_choice"] = t2_i
-                        st.session_state["step2_tier2_current_page"] = (t2_i // 6) + 1
-                        break
+            for t1_i, c in enumerate(st.session_state.get("mined_literature_additives", [])):
+                if c.name.lower() == selected_mol_name.lower():
+                    st.session_state["selected_tier1_name"] = c.name
+                    st.session_state["last_tier1_choice"] = t1_i
+                    st.session_state["last_bottom_tier1_choice"] = t1_i
+                    st.session_state["pending_tier1_choice"] = t1_i
+                    st.session_state["pending_tier1_bottom_choice"] = t1_i
+                    st.session_state["step2_tier1_current_page"] = (t1_i // 6) + 1
+                    break
+            for t2_i, c in enumerate(st.session_state.get("ai_suggested_additives", [])):
+                if c.name.lower() == selected_mol_name.lower():
+                    st.session_state["selected_tier2_name"] = c.name
+                    st.session_state["last_suggested_choice"] = t2_i
+                    st.session_state["last_bottom_tier2_choice"] = t2_i
+                    st.session_state["pending_tier2_choice"] = t2_i
+                    st.session_state["pending_tier2_bottom_choice"] = t2_i
+                    st.session_state["step2_tier2_current_page"] = (t2_i // 6) + 1
+                    break
 
         active_mol_name = st.session_state.get("selected_additive_name") or selected_mol_name
         target_info = next((a for a in all_additives if a["name"].lower() == active_mol_name.lower()), all_additives[0])
@@ -2732,6 +2823,8 @@ with tab_step2:
             parent_electrolyte_input=parent_electrolyte_input,
             is_demo=True,
         )
+        published_conc_input = float(st.session_state.get("published_conc_input", published_conc_input))
+        parent_electrolyte_input = st.session_state.get("parent_electrolyte_input", parent_electrolyte_input)
         if st.session_state.get("selected_additive_name") and st.session_state.get("selected_additive_name") != target_name:
             target_name = st.session_state["selected_additive_name"]
             all_additives = get_all_additives()
@@ -2759,6 +2852,8 @@ with tab_step2:
             parent_electrolyte_input=parent_electrolyte_input,
             is_demo=False,
         )
+        published_conc_input = float(st.session_state.get("published_conc_input", published_conc_input))
+        parent_electrolyte_input = st.session_state.get("parent_electrolyte_input", parent_electrolyte_input)
 
         tier1_present = bool(st.session_state.get("mined_literature_additives", []))
         tier2_present = bool(st.session_state.get("ai_suggested_additives", []) or st.session_state.get("suggested_candidates", []))
@@ -2969,13 +3064,52 @@ with tab_step2:
                     st.session_state["selected_target_salt"] = step2_target_salt
                     st.rerun()
 
+            # Determine if concentration and salt were explicitly reported or unspecified/assumed
+            is_baseline_unspecified = False
+
+            if getattr(anchor, "is_baseline_unspecified", False) or not getattr(anchor, "reported_in_file", True):
+                is_baseline_unspecified = True
+
+            tier1_cands = st.session_state.get("mined_literature_additives", [])
+            active_c = next((c for c in tier1_cands if c.name and c.name.strip().lower() == anchor.additive_name.strip().lower()), None)
+            if active_c is not None:
+                if active_c.reported_concentration is None:
+                    is_baseline_unspecified = True
+                raw_s = active_c.parent_baseline_electrolyte
+                if not raw_s or "unspecified" in str(raw_s).lower() or "not reported" in str(raw_s).lower():
+                    is_baseline_unspecified = True
+
+            batch_items = (st.session_state.get("batch_pdf_extractions", []) or []) + (st.session_state.get("batch_extracted_additives", []) or [])
+            for item in batch_items:
+                add = item.get("additive")
+                if add and add.name and add.name.strip().lower() == anchor.additive_name.strip().lower():
+                    if add.optimal_concentration is None or getattr(add.optimal_concentration, "value", None) is None:
+                        is_baseline_unspecified = True
+                    bc = getattr(add, "battery_context", None)
+                    raw_s = bc.baseline_electrolyte if bc else None
+                    if not raw_s or "unspecified" in str(raw_s).lower() or "not reported" in str(raw_s).lower():
+                        is_baseline_unspecified = True
+                    break
+
+            tier2_cands = st.session_state.get("ai_suggested_additives", []) or st.session_state.get("suggested_candidates", [])
+            active_t2 = next((c for c in tier2_cands if c.name and c.name.strip().lower() == anchor.additive_name.strip().lower()), None)
+            if active_t2 is not None:
+                raw_s = active_t2.parent_baseline_electrolyte
+                if not raw_s or "unspecified" in str(raw_s).lower() or "not reported" in str(raw_s).lower():
+                    is_baseline_unspecified = True
+
+            if st.session_state.get("is_active_baseline_unspecified", False):
+                is_baseline_unspecified = True
+
+            _parent_conc_banner_lbl = f"Assumed {anchor.published_concentration:.1f} mM" if is_baseline_unspecified else f"{anchor.published_concentration:.1f} mM"
+
             with col_b_transfer:
                 st.markdown(
                     f"""
                     <div class="active-banner-transfer-row" style="display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: nowrap;">
                         <div class="active-banner-elyte-box active-banner-parent-box" style="width: fit-content; min-width: 150px; max-width: 240px; background: rgba(31, 119, 180, 0.1); border: 1px solid rgba(31, 119, 180, 0.3); border-radius: 6px; padding: 8px 12px; text-align: right; min-height: 52px; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box;">
                             <div style="font-size: 0.72rem; text-transform: uppercase; font-weight: 700; white-space: nowrap; color: #1f77b4;">{tr("parent_electrolyte_label")}</div>
-                            <div style="font-size: 0.95rem; font-weight: 700; white-space: nowrap; color: #1f77b4;">{parent_elyte_clean} <span style="font-size: 0.80rem; font-weight: 600; color: #1f77b4;">({anchor.published_concentration:.1f} mM)</span></div>
+                            <div style="font-size: 0.95rem; font-weight: 700; white-space: nowrap; color: #1f77b4;">{parent_elyte_clean} <span style="font-size: 0.80rem; font-weight: 600; color: #1f77b4;">({_parent_conc_banner_lbl})</span></div>
                         </div>
                         <div class="active-banner-arrow" style="font-size: 1.3rem; text-align: center; flex-shrink: 0; padding: 0 2px; color: #1f77b4; font-weight: bold;">➔</div>
                         <div class="active-banner-elyte-box active-banner-target-box" style="width: fit-content; min-width: 150px; max-width: 240px; background: rgba(44, 160, 44, 0.1); border: 1px solid rgba(44, 160, 44, 0.3); border-radius: 6px; padding: 8px 12px; text-align: left; min-height: 52px; display: flex; flex-direction: column; justify-content: center; box-sizing: border-box;">
@@ -2986,43 +3120,6 @@ with tab_step2:
                     """,
                     unsafe_allow_html=True,
                 )
-
-        # Determine if concentration and salt were explicitly reported or unspecified/assumed
-        is_baseline_unspecified = False
-
-        if getattr(anchor, "is_baseline_unspecified", False) or not getattr(anchor, "reported_in_file", True):
-            is_baseline_unspecified = True
-
-        tier1_cands = st.session_state.get("mined_literature_additives", [])
-        active_c = next((c for c in tier1_cands if c.name and c.name.strip().lower() == anchor.additive_name.strip().lower()), None)
-        if active_c is not None:
-            if active_c.reported_concentration is None:
-                is_baseline_unspecified = True
-            raw_s = active_c.parent_baseline_electrolyte
-            if not raw_s or "unspecified" in str(raw_s).lower() or "not reported" in str(raw_s).lower():
-                is_baseline_unspecified = True
-
-        batch_items = (st.session_state.get("batch_pdf_extractions", []) or []) + (st.session_state.get("batch_extracted_additives", []) or [])
-        for item in batch_items:
-            add = item.get("additive")
-            if add and add.name and add.name.strip().lower() == anchor.additive_name.strip().lower():
-                if add.optimal_concentration is None or getattr(add.optimal_concentration, "value", None) is None:
-                    is_baseline_unspecified = True
-                bc = getattr(add, "battery_context", None)
-                raw_s = bc.baseline_electrolyte if bc else None
-                if not raw_s or "unspecified" in str(raw_s).lower() or "not reported" in str(raw_s).lower():
-                    is_baseline_unspecified = True
-                break
-
-        tier2_cands = st.session_state.get("ai_suggested_additives", []) or st.session_state.get("suggested_candidates", [])
-        active_t2 = next((c for c in tier2_cands if c.name and c.name.strip().lower() == anchor.additive_name.strip().lower()), None)
-        if active_t2 is not None:
-            raw_s = active_t2.parent_baseline_electrolyte
-            if not raw_s or "unspecified" in str(raw_s).lower() or "not reported" in str(raw_s).lower():
-                is_baseline_unspecified = True
-
-        if st.session_state.get("is_active_baseline_unspecified", False):
-            is_baseline_unspecified = True
 
         col_anc1, col_anc2, col_anc3, col_anc4 = st.columns(4)
         with col_anc1:
@@ -3051,7 +3148,11 @@ with tab_step2:
         with col_anc3:
             st.metric(tr("metric_target_ref_conc"), f"{anchor.shifted_anchor_conc:.2f} mM", f"Range: [{anchor.min_conc:.1f}, {anchor.max_conc:.1f}] mM")
         with col_anc4:
-            st.metric(tr("metric_safety_cap"), f"{anchor.solubility_ceiling_mM:.1f} mM" if anchor.solubility_ceiling_mM else "None", "Capped: " + str(anchor.is_capped_by_solubility))
+            st.metric(
+                tr("metric_safety_cap"),
+                format_solubility_conc(anchor.solubility_ceiling_mM) if anchor.solubility_ceiling_mM is not None else "N/A",
+                "Capped: " + str(anchor.is_capped_by_solubility) if anchor.solubility_ceiling_mM is not None else "Outside ESOL domain",
+            )
 
         st.markdown(f'<div class="callout-box"><strong>{tr("mechanistic_scaling_label")}</strong> {format_chem_formula(anchor.electrolyte_adjustment_rationale)}</div>', unsafe_allow_html=True)
 
@@ -3293,7 +3394,7 @@ with tab_step2:
                         line_width=2,
                         line_dash="dash",
                         line_color="#e63946",
-                        annotation_text=f"ESOL 80% Cap ({anchor.solubility_ceiling_mM:.1f} mM)",
+                        annotation_text=f"ESOL 80% Cap ({format_solubility_conc(anchor.solubility_ceiling_mM)})",
                         annotation_position="top left",
                         annotation_font_color="#e63946",
                     )
@@ -3500,41 +3601,45 @@ with tab_step2:
                     cur_lang = st.session_state.get("app_language", "en")
 
                     # 1. Anchor & Scaling Description
+                    _ref_type_en = "assumed exploratory baseline" if is_baseline_unspecified else "literature baseline"
+                    _ref_type_fr = "référence exploratoire supposée" if is_baseline_unspecified else "référence"
+                    _ref_type_zh = "假设探索基准" if is_baseline_unspecified else "文献基准"
                     if anchor.scaling_factor != 1.0:
                         if cur_lang == "fr":
-                            anchor_desc = f"Centré à <strong>{anchor.shifted_anchor_conc:.1f} mM</strong> dans {target_elyte_clean} (obtenu par mise à l'échelle de {anchor.published_concentration:.1f} mM dans {parent_elyte_clean} par un facteur <strong>{anchor.scaling_factor:.2f}×</strong> selon la permittivité diélectrique, la viscosité et le nombre donneur)."
+                            anchor_desc = f"Centré à <strong>{anchor.shifted_anchor_conc:.1f} mM</strong> dans {target_elyte_clean} (obtenu par mise à l'échelle de {anchor.published_concentration:.1f} mM ({_ref_type_fr}) dans {parent_elyte_clean} par un facteur <strong>{anchor.scaling_factor:.2f}×</strong> selon la permittivité diélectrique, la viscosité et le nombre donneur)."
                         elif cur_lang == "zh":
-                            anchor_desc = f"配方中心锚定于 {target_elyte_clean} 中的 <strong>{anchor.shifted_anchor_conc:.1f} mM</strong>（基于介电常数、动力学粘度与给体数 DN 差异，由 {parent_elyte_clean} 中的文献基准 {anchor.published_concentration:.1f} mM 经 <strong>{anchor.scaling_factor:.2f}×</strong> 比例换算外推）。"
+                            anchor_desc = f"配方中心锚定于 {target_elyte_clean} 中的 <strong>{anchor.shifted_anchor_conc:.1f} mM</strong>（基于介电常数、动力学粘度与给体数 DN 差异，由 {parent_elyte_clean} 中的{_ref_type_zh} {anchor.published_concentration:.1f} mM 经 <strong>{anchor.scaling_factor:.2f}×</strong> 比例换算外推）。"
                         else:
-                            anchor_desc = f"Centered at <strong>{anchor.shifted_anchor_conc:.1f} mM</strong> in {target_elyte_clean} (scaled from {anchor.published_concentration:.1f} mM in {parent_elyte_clean} by <strong>{anchor.scaling_factor:.2f}×</strong> based on dielectric constant, viscosity, and donor number ratios)."
+                            anchor_desc = f"Centered at <strong>{anchor.shifted_anchor_conc:.1f} mM</strong> in {target_elyte_clean} (scaled from {_ref_type_en} {anchor.published_concentration:.1f} mM in {parent_elyte_clean} by <strong>{anchor.scaling_factor:.2f}×</strong> based on dielectric constant, viscosity, and donor number ratios)."
                     else:
                         if cur_lang == "fr":
-                            anchor_desc = f"Centré à <strong>{anchor.shifted_anchor_conc:.1f} mM</strong> dans {target_elyte_clean} (conforme à la référence {parent_elyte_clean} grâce aux énergies de solvatation équivalentes)."
+                            anchor_desc = f"Centré à <strong>{anchor.shifted_anchor_conc:.1f} mM</strong> dans {target_elyte_clean} (conforme à la {_ref_type_fr} {parent_elyte_clean} grâce aux énergies de solvatation équivalentes)."
                         elif cur_lang == "zh":
-                            anchor_desc = f"配方中心锚定于 {target_elyte_clean} 中的 <strong>{anchor.shifted_anchor_conc:.1f} mM</strong>（与 {parent_elyte_clean} 文献基准一致，两体系溶剂化热力学能量相当）。"
+                            anchor_desc = f"配方中心锚定于 {target_elyte_clean} 中的 <strong>{anchor.shifted_anchor_conc:.1f} mM</strong>（与 {parent_elyte_clean} {_ref_type_zh}一致，两体系溶剂化热力学能量相当）。"
                         else:
-                            anchor_desc = f"Centered at <strong>{anchor.shifted_anchor_conc:.1f} mM</strong> in {target_elyte_clean} (matching literature baseline in {parent_elyte_clean} due to equivalent solvation energetics)."
+                            anchor_desc = f"Centered at <strong>{anchor.shifted_anchor_conc:.1f} mM</strong> in {target_elyte_clean} (matching {_ref_type_en} in {parent_elyte_clean} due to equivalent solvation energetics)."
 
                     # 2. Solubility Protection Description
                     ceil_val = anchor.solubility_ceiling_mM or 0.0
+                    ceil_str = format_solubility_conc(ceil_val)
                     if cur_lang == "fr":
                         solubility_desc = f"Plage de concentration en additif : [<strong>{anchor.min_conc:.1f}</strong>, <strong>{anchor.max_conc:.1f} mM</strong>]"
                         if anchor.is_capped_by_solubility:
-                            solubility_desc += f", strictement bridée par le <strong>plafond de sécurité Delaney ESOL 80% ({ceil_val:.1f} mM)</strong> afin d'éliminer la sursaturation locale, le relargage et la nucléation de dendrites."
+                            solubility_desc += f", strictement bridée par le <strong>plafond de sécurité Delaney ESOL 80% ({ceil_str})</strong> afin d'éliminer la sursaturation locale, le relargage et la nucléation de dendrites."
                         else:
-                            solubility_desc += f", restant sous le seuil théorique de saturation Delaney ESOL ({ceil_val:.1f} mM) pour garantir une parfaite dissolution."
+                            solubility_desc += f", restant sous le seuil théorique de saturation Delaney ESOL ({ceil_str}) pour garantir une parfaite dissolution."
                     elif cur_lang == "zh":
                         solubility_desc = f"添加剂浓度探索区间为 [<strong>{anchor.min_conc:.1f}</strong>, <strong>{anchor.max_conc:.1f} mM</strong>]"
                         if anchor.is_capped_by_solubility:
-                            solubility_desc += f"，受 <strong>Delaney ESOL 80% 溶解度安全上限 ({ceil_val:.1f} mM)</strong> 刚性约束，彻底防止高离子强度下的局部过饱和、盐析效应与析出诱发枝晶。"
+                            solubility_desc += f"，受 <strong>Delaney ESOL 80% 溶解度安全上限 ({ceil_str})</strong> 刚性约束，彻底防止高离子强度下的局部过饱和、盐析效应与析出诱发枝晶。"
                         else:
-                            solubility_desc += f"，远低于 Delaney ESOL 水相饱和溶解度阈值 ({ceil_val:.1f} mM)，确保完全分子级均相溶解。"
+                            solubility_desc += f"，远低于 Delaney ESOL 水相饱和溶解度阈值 ({ceil_str})，确保完全分子级均相溶解。"
                     else:
                         solubility_desc = f"Additive concentrations range across [<strong>{anchor.min_conc:.1f}</strong>, <strong>{anchor.max_conc:.1f} mM</strong>]"
                         if anchor.is_capped_by_solubility:
-                            solubility_desc += f", capped by the <strong>Delaney ESOL 80% safety cap ({ceil_val:.1f} mM)</strong> to prevent localized supersaturation, salting-out, and precipitate-nucleated dendrites."
+                            solubility_desc += f", capped by the <strong>Delaney ESOL 80% safety cap ({ceil_str})</strong> to prevent localized supersaturation, salting-out, and precipitate-nucleated dendrites."
                         else:
-                            solubility_desc += f", safely below the Delaney ESOL aqueous saturation threshold ({ceil_val:.1f} mM) to ensure complete molecular dissolution."
+                            solubility_desc += f", safely below the Delaney ESOL aqueous saturation threshold ({ceil_str}) to ensure complete molecular dissolution."
 
                     # 3. Sampling Method Description
                     sampling_desc = tr("doe_rationale_lhs_desc") if plan.method.lower() == "lhs" else tr("doe_rationale_ccd_desc")

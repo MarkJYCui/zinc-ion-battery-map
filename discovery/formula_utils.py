@@ -7,7 +7,7 @@ chemical formulas using Unicode subscripts (e.g., C₁₂H₂₂O₁₁, LiCl, Z
 """
 
 import re
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 from rdkit import Chem
 try:
     from discovery.search import clean_scientific_text
@@ -552,3 +552,154 @@ def normalize_condition_key(name: str, conc: Optional[float] = None, salt: Optio
             clean_salt = f"{m_val}zncl2"
 
     return f"{clean_name}::{conc_val}::{clean_salt}"
+
+
+def convert_concentration_to_mM(
+    value: Any,
+    unit: Optional[str] = None,
+    mw: Optional[float] = None,
+    raw_text: Optional[str] = None,
+) -> Tuple[Optional[float], str]:
+    """
+    Convert a reported additive concentration value and unit into millimolar (mM).
+    - Molar units ('M', 'mol/L', 'mol L-1', 'mol·L⁻¹', 'mol dm-3', 'molar') -> value * 1000.0 mM
+    - Millimolar units ('mM', 'mmol/L', 'mmol L-1', 'mmol dm-3', 'millimolar') -> value mM
+    - Micromolar units ('µM', 'uM', 'µmol/L', 'umol L-1') -> value / 1000.0 mM
+    - Mass units ('g/L', 'mg/mL') -> (value / mw) * 1000.0 mM when mw > 0
+    - Trace mass units ('mg/L', 'µg/mL') -> (value / mw) mM when mw > 0
+    Returns (converted_value, canonical_unit).
+    """
+    val: Optional[float] = None
+    raw_u: str = (unit or "").strip()
+
+    if value is None or isinstance(value, bool):
+        if raw_text and isinstance(raw_text, str):
+            rt_s = raw_text.strip()
+            if rt_s and "unspecified" not in rt_s.lower() and "not reported" not in rt_s.lower():
+                m_rt = re.search(r'(\d+(?:\.\d+)?)\s*([a-zA-Zµμ%·⋅/\-\d⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻\s]*)', rt_s)
+                if m_rt:
+                    try:
+                        val = float(m_rt.group(1))
+                        if not raw_u:
+                            raw_u = m_rt.group(2).strip()
+                    except ValueError:
+                        return (None, "mM")
+                else:
+                    return (None, "mM")
+            else:
+                return (None, "mM")
+        else:
+            return (None, "mM")
+    elif isinstance(value, (int, float)):
+        val = float(value)
+    else:
+        s = str(value).strip()
+        if not s or s.lower() in ("none", "null", "unspecified", "not reported", "n/a", "nan"):
+            return (None, "mM")
+        try:
+            val = float(s)
+        except ValueError:
+            m_val = re.search(r'(\d+(?:\.\d+)?)\s*(.*)', s)
+            if not m_val:
+                return (None, "mM")
+            try:
+                val = float(m_val.group(1))
+                if not raw_u and m_val.group(2):
+                    raw_u = m_val.group(2).strip()
+            except ValueError:
+                return (None, "mM")
+
+    if val is None:
+        return (None, "mM")
+
+    if raw_text and isinstance(raw_text, str):
+        rt_clean = raw_text.strip()
+        if rt_clean and "unspecified" not in rt_clean.lower() and "not reported" not in rt_clean.lower():
+            if not raw_u or (
+                raw_u.lower() == "mm"
+                and not re.search(r'\b(?:mm|mmol|millimol)', rt_clean, re.IGNORECASE)
+            ):
+                m_rt_u = re.search(r'\d+(?:\.\d+)?\s*([a-zA-Zµμ%·⋅/\-\d⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻\s]+)', rt_clean)
+                if m_rt_u and m_rt_u.group(1).strip():
+                    raw_u = m_rt_u.group(1).strip()
+
+    if not raw_u:
+        return (round(val, 6), "mM")
+
+    u_norm = (
+        raw_u.replace("⁻¹", "-1")
+        .replace("⁻³", "-3")
+        .replace("³", "3")
+        .replace("¹", "1")
+        .replace("·", " ")
+        .replace("⋅", " ")
+        .replace("•", " ")
+        .replace("−", "-")
+        .replace("–", "-")
+        .replace("—", "-")
+    )
+    u_clean = re.sub(r'\s+', ' ', u_norm).strip().lower()
+
+    # 1. Millimolar (mM)
+    if (
+        u_clean in ("mm", "millimolar", "mmolar", "mmol/l", "mmol l-1", "mmol/dm3", "mmol dm-3", "mmol l", "mmol/liter", "mmol/litre")
+        or re.match(r'^mmol\s*(?:/|\s*)\s*(?:l|dm|liter|litre)\s*(?:-1|-3|3)?\b', u_clean)
+    ):
+        return (round(val, 6), "mM")
+
+    # 2. Molar (M -> mM)
+    if (
+        u_clean in ("m", "molar", "mol/l", "mol l-1", "mol/dm3", "mol dm-3", "mol l", "mol/liter", "mol/litre")
+        or re.match(r'^mol\s*(?:/|\s*)\s*(?:l|dm|liter|litre)\s*(?:-1|-3|3)?\b', u_clean)
+    ):
+        return (round(val * 1000.0, 6), "mM")
+
+    # 3. Micromolar (µM / uM -> mM)
+    if (
+        u_clean in ("um", "µm", "μm", "micromolar", "umol/l", "µmol/l", "μmol/l", "umol l-1", "µmol l-1", "μmol l-1", "umol dm-3", "µmol dm-3", "μmol dm-3")
+        or re.match(r'^[uµμ]mol\s*(?:/|\s*)\s*(?:l|dm|liter|litre)\s*(?:-1|-3|3)?\b', u_clean)
+    ):
+        return (round(val / 1000.0, 6), "mM")
+
+    # 4. Gram per liter / mg per mL (g/L, mg/mL -> mM when MW > 0)
+    if (
+        u_clean in ("g/l", "g l-1", "g/dm3", "g dm-3", "mg/ml", "mg ml-1")
+        or re.match(r'^(?:g\s*(?:/|\s*)\s*(?:l|dm)|mg\s*(?:/|\s*)\s*ml)\s*(?:-1|-3|3)?\b', u_clean)
+    ):
+        if mw is not None and float(mw) > 0:
+            return (round((val / float(mw)) * 1000.0, 6), "mM")
+        return (round(val, 6), "mg/mL" if "mg" in u_clean else "g/L")
+
+    # 5. Milligram per liter / µg per mL (mg/L, µg/mL -> mM when MW > 0)
+    if (
+        u_clean in ("mg/l", "mg l-1", "mg/dm3", "mg dm-3", "ug/ml", "µg/ml", "μg/ml", "ug ml-1", "µg ml-1")
+        or re.match(r'^(?:mg\s*(?:/|\s*)\s*(?:l|dm)|[uµμ]g\s*(?:/|\s*)\s*ml)\s*(?:-1|-3|3)?\b', u_clean)
+    ):
+        if mw is not None and float(mw) > 0:
+            return (round(val / float(mw), 6), "mM")
+        return (round(val, 6), "mg/L")
+
+    # 6. Weight / Volume percent
+    if u_clean in ("wt%", "wt %", "wt.%", "weight%", "weight %", "w/w%", "w/w"):
+        return (round(val, 6), "wt%")
+    if u_clean in ("vol%", "vol %", "vol.%", "volume%", "volume %", "v/v%", "v/v"):
+        return (round(val, 6), "vol%")
+
+    return (round(val, 6), raw_u)
+
+
+def format_solubility_conc(val_mm: Optional[float], threshold_mm: float = 100.0) -> str:
+    """
+    Format a concentration value (in mM) for display.
+    Values >= threshold_mm (default 100.0 mM = 0.1 M) are converted to M (e.g., '0.12 M', '1.50 M').
+    Values < threshold_mm are displayed in mM (e.g., '15.0 mM', '85.0 mM').
+    """
+    if val_mm is None:
+        return "N/A"
+    try:
+        v = float(val_mm)
+    except (ValueError, TypeError):
+        return str(val_mm)
+    if v >= threshold_mm:
+        return f"{v / 1000.0:.2f} M"
+    return f"{v:.1f} mM"

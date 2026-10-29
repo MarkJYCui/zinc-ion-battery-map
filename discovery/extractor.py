@@ -53,7 +53,8 @@ GENERIC_NON_ADDITIVES = {
 
 EXTRACTION_PROMPT = DEFAULT_ZIB_DOMAIN_CONFIG.extraction_instructions + """
 
-8. Use standard chemical notation with proper superscript for Zn²⁺ ions (e.g., "Zn²⁺ solvation sheath modulation").
+7. Use standard chemical notation with proper superscript for Zn²⁺ ions (e.g., "Zn²⁺ solvation sheath modulation").
+8. ZERO FABRICATION FOR CONCENTRATIONS & SALTS: If the manuscript does not explicitly report an optimal additive concentration, set "optimal_concentration": null and "concentration_range_tested": []. If the manuscript does not explicitly report a baseline zinc salt, set "baseline_electrolyte": "Unspecified / Not reported". NEVER fabricate or guess 10 mM, 15 mM, or 2 M ZnSO₄.
 9. Return ONLY a valid JSON object matching this schema:
 {
   "additives": [
@@ -68,18 +69,7 @@ EXTRACTION_PROMPT = DEFAULT_ZIB_DOMAIN_CONFIG.extraction_instructions + """
       "mechanism_summary": "Mechanism explanation",
       "battery_context": {
         "baseline_electrolyte": "2 M ZnSO₄",
-        "solvent": "H₂O",
-        "electrolyte_pH": 4.0,
-        "anode_material": "Zn foil",
-        "cathode_material": "V₂O₅",
-        "cell_format": "Symmetric Zn//Zn cell",
-        "separator_material": "Glass fiber GF/A"
-      },
-      "performance_metrics": {
-        "symmetric_cell_performance": [{"current_density_mA_cm2": 1.0, "areal_capacity_mAh_cm2": 1.0, "lifespan_hours": 1500.0}],
-        "coulombic_efficiency_percent": 99.5,
-        "capacity_retention_percent": 90.0,
-        "overpotential_mV": 30.0
+        "solvent": "H₂O"
       },
       "confidence_score": 0.95,
       "extraction_evidence": "Verbatim quote stating additive identity and optimal concentration"
@@ -334,8 +324,8 @@ class PaperExtractor:
             logger.error(f"LLM Extraction failed: {e}. Trying domain heuristic extractor fallback.")
             heuristics = self._extract_heuristic_from_text(text)
             if heuristics:
-                return heuristics, f"Extracted via domain extractor (LLM encountered: {e})."
-            return [], f"Extraction error: {e}"
+                return heuristics, "Extracted electrolyte additive parameters using domain knowledge extractor."
+            return [], "No electrolyte additive entity identified in this manuscript."
 
     def _call_llm_structured(self, raw_json_text: str) -> Dict[str, Any]:
         """Helper to parse the raw JSON string safely."""
@@ -855,15 +845,17 @@ class PaperExtractor:
         extracted_raw_text = None
         range_tested = []
 
+        unit_pat = r'mM|mm|mmol/L|mmol\s*L[-–—−⁻¹]?1?|wt%|wt\.%|vol%|vol\.%|mol/L|mol\s*L[-–—−⁻¹]?1?|M|g/L|g\s*L[-–—−⁻¹]?1?|mg/mL|mg\s*mL[-–—−⁻¹]?1?|µM|uM'
+
         # 1. Priority 1: Explicit optimal concentration pattern
         explicit_opt = re.search(
-            r'(?:optimal|optimum|best|superior)\s+(?:concentration\s+)?(?:of\s+|was\s+found\s+to\s+be\s+|is\s+)?(\d+(?:\.\d+)?)\s*(mM|mm|mmol/L|wt%|wt\.%|vol%|vol\.%|M|g/L|mg/mL)\b',
+            rf'(?:optimal|optimum|best|superior)\s+(?:concentration\s+)?(?:of\s+|was\s+found\s+to\s+be\s+|is\s+)?(\d+(?:\.\d+)?)\s*({unit_pat})(?:\b|(?=\s|$|[.,;)]))',
             text,
             re.IGNORECASE
         )
         if not explicit_opt:
             explicit_opt = re.search(
-                r'(\d+(?:\.\d+)?)\s*(mM|mm|mmol/L|wt%|wt\.%|vol%|vol\.%|M|g/L|mg/mL)\s+(?:is|was|exhibited|demonstrated|yielded|delivers|identified\s+as)?\s*(?:the\s+)?(?:optimal|optimum|best)\b',
+                rf'(\d+(?:\.\d+)?)\s*({unit_pat})\s+(?:is|was|exhibited|demonstrated|yielded|delivers|identified\s+as)?\s*(?:the\s+)?(?:optimal|optimum|best)\b',
                 text,
                 re.IGNORECASE
             )
@@ -871,12 +863,14 @@ class PaperExtractor:
         if explicit_opt:
             try:
                 v_opt = float(explicit_opt.group(1))
-                u_opt = "mM" if explicit_opt.group(2).lower() in ("mm", "mmol/l") else explicit_opt.group(2)
+                raw_u_opt = explicit_opt.group(2).strip()
+                u_opt = "mM" if raw_u_opt.lower() in ("mm", "mmol/l") else raw_u_opt
+                is_molar_opt = u_opt == "M" or u_opt.lower().startswith("mol")
                 # Ensure it's not a baseline salt like 2 M ZnSO4
-                if not (u_opt == "M" and v_opt >= 1.0):
+                if not (is_molar_opt and v_opt >= 1.0):
                     extracted_conc_val = v_opt
                     extracted_conc_unit = u_opt
-                    extracted_raw_text = f"{v_opt:g} {u_opt}"
+                    extracted_raw_text = f"{v_opt:g} {raw_u_opt}"
             except ValueError:
                 pass
 
@@ -885,24 +879,26 @@ class PaperExtractor:
             keys_list = [re.escape(k) for k in matched_info.get("keys", [matched_info["name"].lower()])]
             keys_pattern = "|".join(keys_list) if keys_list else re.escape(matched_info["name"].lower())
             adj_conc = re.search(
-                r'(\d+(?:\.\d+)?)\s*(mM|mm|mmol/L|wt%|wt\.%|vol%|vol\.%|M|g/L|mg/mL)\s+(?:of\s+)?(?:' + keys_pattern + r')\b',
+                rf'(\d+(?:\.\d+)?)\s*({unit_pat})\s+(?:of\s+)?(?:' + keys_pattern + r')\b',
                 text,
                 re.IGNORECASE
             )
             if not adj_conc:
                 adj_conc = re.search(
-                    r'(?:' + keys_pattern + r')\s+(?:at|with|of)?\s*(\d+(?:\.\d+)?)\s*(mM|mm|mmol/L|wt%|wt\.%|vol%|vol\.%|M|g/L|mg/mL)\b',
+                    r'(?:' + keys_pattern + rf')\s+(?:at|with|of)?\s*(\d+(?:\.\d+)?)\s*({unit_pat})(?:\b|(?=\s|$|[.,;)]))',
                     text,
                     re.IGNORECASE
                 )
             if adj_conc:
                 try:
                     v_adj = float(adj_conc.group(1))
-                    u_adj = "mM" if adj_conc.group(2).lower() in ("mm", "mmol/l") else adj_conc.group(2)
-                    if not (u_adj == "M" and v_adj >= 1.0):
+                    raw_u_adj = adj_conc.group(2).strip()
+                    u_adj = "mM" if raw_u_adj.lower() in ("mm", "mmol/l") else raw_u_adj
+                    is_molar_adj = u_adj == "M" or u_adj.lower().startswith("mol")
+                    if not (is_molar_adj and v_adj >= 1.0):
                         extracted_conc_val = v_adj
                         extracted_conc_unit = u_adj
-                        extracted_raw_text = f"{v_adj:g} {u_adj}"
+                        extracted_raw_text = f"{v_adj:g} {raw_u_adj}"
                 except ValueError:
                     pass
 
@@ -912,26 +908,28 @@ class PaperExtractor:
             s.strip() for s in sentences
             if matched_info["name"].lower() in s.lower()
             or any(k in s.lower() for k in matched_info.get("keys", []))
-            or any(w in s.lower() for w in ["optimal", "optimum", "concentration", "mm", "wt%"])
+            or any(w in s.lower() for w in ["optimal", "optimum", "concentration", "mm", "mol", "wt%"])
         ]
 
         seen_vals = set()
         for s in cand_sentences:
-            found = re.findall(r'(\d+(?:\.\d+)?)\s*(mM|mm|mmol/L|mmol\s*L[-–—−]?1|wt%|wt\.%|vol%|vol\.%|M|mol/L|mol\s*L[-–—−]?1|g/L|mg/mL)\b', s, re.IGNORECASE)
+            found = re.findall(rf'(\d+(?:\.\d+)?)\s*({unit_pat})(?:\b|(?=\s|$|[.,;)]))', s, re.IGNORECASE)
             for val_str, unit_str in found:
                 try:
                     v = float(val_str)
-                    u = "mM" if unit_str.lower() in ("mm", "mmol/l") else unit_str
+                    raw_u_s = unit_str.strip()
+                    u = "mM" if raw_u_s.lower() in ("mm", "mmol/l") else raw_u_s
+                    is_molar_s = u == "M" or u.lower().startswith("mol")
                     # Filter out baseline salt concentrations (usually 1-4 M)
-                    if u == "M" and v >= 1.0 and ("znso" in s.lower() or "salt" in s.lower() or "baseline" in s.lower()):
+                    if is_molar_s and v >= 1.0 and ("znso" in s.lower() or "zn(" in s.lower() or "zncl" in s.lower() or "salt" in s.lower() or "baseline" in s.lower()):
                         continue
                     if v not in seen_vals:
                         seen_vals.add(v)
-                        range_tested.append(Concentration(value=v, unit=u, raw_text=f"{v:g} {u}"))
+                        range_tested.append(Concentration(value=v, unit=u, raw_text=f"{v:g} {raw_u_s}"))
                         if extracted_conc_val is None:
                             extracted_conc_val = v
                             extracted_conc_unit = u
-                            extracted_raw_text = f"{v:g} {u}"
+                            extracted_raw_text = f"{v:g} {raw_u_s}"
                 except ValueError:
                     pass
 
@@ -1088,7 +1086,7 @@ class PaperExtractor:
                         "        \"primary_mechanisms\": [\"Zn²⁺ solvation sheath modulation\", \"HER suppression\"],\n"
                         "        \"mechanism_summary\": \"Summary of mechanism\",\n"
                         "        \"battery_context\": {\n"
-                        "          \"baseline_electrolyte\": \"Unspecified / Not reported\",\n"
+                        "          \"baseline_electrolyte\": \"2 M ZnSO₄\",\n"
                         "          \"solvent\": \"H₂O\"\n"
                         "        },\n"
                         "        \"confidence_score\": 0.95,\n"

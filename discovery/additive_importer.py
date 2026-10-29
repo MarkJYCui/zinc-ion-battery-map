@@ -27,7 +27,12 @@ from rdkit import Chem
 from rdkit.Chem import Descriptors, Lipinski
 
 from models import CandidateMolecule
-from discovery.formula_utils import get_chemical_formula, format_chem_formula, normalize_condition_key
+from discovery.formula_utils import (
+    get_chemical_formula,
+    format_chem_formula,
+    normalize_condition_key,
+    convert_concentration_to_mM,
+)
 from discovery.similarity import CURATED_ZIB_ADDITIVES, calculate_delaney_esol
 from discovery.pubchem_client import PubChemClient, canonicalize_smiles, is_valid_smiles
 from export_engine import make_multi_sheet_xlsx
@@ -271,9 +276,13 @@ def parse_additive_file(file_bytes: bytes, filename: str) -> Tuple[List[Dict[str
         smi_val = ""
         if len(parts) > 1:
             try:
-                c_matches = re.findall(r'[\d.]+', parts[1])
-                if c_matches:
-                    conc_val = float(c_matches[0])
+                conv_v, _ = convert_concentration_to_mM(parts[1], raw_text=parts[1])
+                if conv_v is not None:
+                    conc_val = conv_v
+                else:
+                    c_matches = re.findall(r'[\d.]+', parts[1])
+                    if c_matches:
+                        conc_val = float(c_matches[0])
             except Exception:
                 conc_val = None
         if len(parts) > 2 and parts[2].strip():
@@ -315,12 +324,23 @@ def deduplicate_and_resolve_additives(
             continue
 
         raw_conc = rec.get("concentration")
+        raw_unit = str(rec.get("unit", "")).strip()
         conc_val = None
+        unit_val = raw_unit or "mM"
         if raw_conc is not None:
             try:
-                conc_m = re.findall(r'[\d.]+', str(raw_conc))
-                if conc_m:
-                    conc_val = float(conc_m[0])
+                conv_v, conv_u = convert_concentration_to_mM(
+                    raw_conc,
+                    unit=raw_unit if raw_unit else None,
+                    raw_text=str(raw_conc),
+                )
+                if conv_v is not None:
+                    conc_val = conv_v
+                    unit_val = conv_u
+                else:
+                    conc_m = re.findall(r'[\d.]+', str(raw_conc))
+                    if conc_m:
+                        conc_val = float(conc_m[0])
             except Exception:
                 conc_val = None
 
@@ -343,7 +363,7 @@ def deduplicate_and_resolve_additives(
         unique_candidates[cond_key] = {
             "name": raw_name,
             "conc": conc_val,
-            "unit": str(rec.get("unit", "mM")).strip() or "mM",
+            "unit": unit_val,
             "salt": raw_salt,
             "smiles": raw_smiles,
             "formula": raw_formula,
@@ -434,6 +454,9 @@ def deduplicate_and_resolve_additives(
 
         mechs = [m.strip() for m in re.split(r'[,;]', c_mech) if m.strip()] if c_mech else []
         mech_summary = ", ".join(mechs) if mechs else "Unspecified / Not reported"
+
+        if c_conc is not None and mw > 0 and c_unit in ("g/L", "mg/mL", "mg/L", "µg/mL", "ug/mL"):
+            c_conc, c_unit = convert_concentration_to_mM(c_conc, c_unit, mw=mw)
 
         cand = CandidateMolecule(
             name=c_name,

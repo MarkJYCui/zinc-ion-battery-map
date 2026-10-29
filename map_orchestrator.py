@@ -36,6 +36,7 @@ from optimization.dispenser import RoboticDispenserEngine
 from analysis.analyzer_cli import run_analysis
 from discovery.literature_engine import LiteratureDiscoveryEngine
 from discovery.similarity import CURATED_ZIB_ADDITIVES
+from discovery.formula_utils import convert_concentration_to_mM
 
 logger = logging.getLogger("MAPOrchestrator")
 
@@ -281,18 +282,42 @@ class MAPOrchestrator:
                 target_add = extraction.additives[0]
                 additive_name = target_add.name
                 smiles = target_add.smiles
-                published_conc = target_add.optimal_concentration.value if target_add.optimal_concentration is not None else 15.0
+                if target_add.optimal_concentration is not None and target_add.optimal_concentration.value is not None:
+                    conv_c, _ = convert_concentration_to_mM(
+                        target_add.optimal_concentration.value,
+                        target_add.optimal_concentration.unit,
+                        raw_text=target_add.optimal_concentration.raw_text,
+                    )
+                    published_conc = float(conv_c) if conv_c is not None else float(target_add.optimal_concentration.value)
+                else:
+                    published_conc = 15.0
                 parent_electrolyte = target_add.battery_context.baseline_electrolyte if target_add.battery_context is not None else "2 M ZnSO4"
         elif isinstance(extraction, ExtractedAdditive):
             additive_name = extraction.name
             smiles = extraction.smiles
-            published_conc = extraction.optimal_concentration.value if extraction.optimal_concentration is not None else 15.0
+            if extraction.optimal_concentration is not None and extraction.optimal_concentration.value is not None:
+                conv_c, _ = convert_concentration_to_mM(
+                    extraction.optimal_concentration.value,
+                    extraction.optimal_concentration.unit,
+                    raw_text=extraction.optimal_concentration.raw_text,
+                )
+                published_conc = float(conv_c) if conv_c is not None else float(extraction.optimal_concentration.value)
+            else:
+                published_conc = 15.0
             parent_electrolyte = extraction.battery_context.baseline_electrolyte if extraction.battery_context is not None else "2 M ZnSO4"
         elif isinstance(extraction, CandidateMolecule):
             additive_name = extraction.name
             smiles = extraction.smiles
             parent_electrolyte = extraction.parent_baseline_electrolyte or "2 M ZnSO4"
-            published_conc = 15.0
+            if extraction.reported_concentration is not None:
+                conv_c, _ = convert_concentration_to_mM(
+                    extraction.reported_concentration,
+                    extraction.reported_concentration_unit,
+                    mw=extraction.molecular_weight,
+                )
+                published_conc = float(conv_c) if conv_c is not None else float(extraction.reported_concentration)
+            else:
+                published_conc = 15.0
         elif isinstance(extraction, dict):
             additive_name = extraction.get("name") or extraction.get("additive_name", "Unknown Additive")
             smiles = extraction.get("smiles")

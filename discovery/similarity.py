@@ -160,11 +160,15 @@ def calculate_delaney_esol(
 ) -> float:
     """
     Calculate Estimated Solubility (ESOL) using the Delaney equation.
-    Supports either passing an RDKit Mol object or direct descriptors (logp, mw, n_rot, aromatic_prop).
+    Supports either passing an RDKit Mol object, a SMILES string, or direct descriptors (logp, mw, n_rot, aromatic_prop).
     """
     if mw is not None and n_rot is not None and aromatic_prop is not None:
         return calculate_esol(mol, mw, n_rot, aromatic_prop)
     try:
+        if isinstance(mol, str):
+            mol = Chem.MolFromSmiles(mol.strip())
+            if mol is None:
+                return -99.9
         clogp = Descriptors.MolLogP(mol)
         mw_val = Descriptors.MolWt(mol)
         rb = Descriptors.NumRotatableBonds(mol)
@@ -175,6 +179,65 @@ def calculate_delaney_esol(
     except Exception as e:
         logger.warning(f"Failed to calculate ESOL: {e}")
         return -99.9
+
+
+_ESOL_ALLOWED_ATOMIC_NUMS = {1, 5, 6, 7, 8, 9, 14, 15, 16, 17, 35, 53}
+
+
+def is_esol_applicable(mol: Any, logs: Optional[float] = None) -> Tuple[bool, str]:
+    """
+    Check whether a molecule falls strictly within Delaney ESOL's scientific applicability domain:
+    1. Valid, RDKit-parseable structure with > 0 heavy atoms.
+    2. Single-component (no disconnected salt counterions / mixtures).
+    3. Neutral, metal-free organic molecule (contains carbon, net formal charge 0,
+       no spatially separated ionic/zwitterionic formal charges).
+    4. Estimated LogS within physical bounds (-10.0 < LogS <= 2.0).
+
+    Returns:
+        (is_applicable, reason_if_not_applicable)
+    """
+    if mol is None:
+        return False, "Valid SMILES required"
+    if isinstance(mol, str):
+        s = mol.strip()
+        if not s:
+            return False, "Valid SMILES required"
+        mol = Chem.MolFromSmiles(s)
+        if mol is None:
+            return False, "Valid SMILES required"
+
+    try:
+        if mol.GetNumHeavyAtoms() == 0:
+            return False, "Outside ESOL domain"
+
+        if len(Chem.GetMolFrags(mol)) > 1:
+            return False, "Ionic salt (outside ESOL domain)"
+
+        atoms = list(mol.GetAtoms())
+        has_carbon = any(a.GetAtomicNum() == 6 for a in atoms)
+        if not has_carbon:
+            return False, "Inorganic species (outside ESOL domain)"
+
+        if any(a.GetAtomicNum() not in _ESOL_ALLOWED_ATOMIC_NUMS for a in atoms):
+            return False, "Metal / inorganic species (outside ESOL domain)"
+
+        if Chem.GetFormalCharge(mol) != 0:
+            return False, "Charged ion (outside ESOL domain)"
+
+        for atom in atoms:
+            fc = atom.GetFormalCharge()
+            if fc != 0:
+                has_bonded_countercharge = any((nbr.GetFormalCharge() * fc) < 0 for nbr in atom.GetNeighbors())
+                if not has_bonded_countercharge:
+                    return False, "Zwitterion / ionic species (outside ESOL domain)"
+
+        esol_val = logs if logs is not None else calculate_delaney_esol(mol)
+        if esol_val is None or esol_val <= -10.0 or esol_val > 2.0:
+            return False, "Outside ESOL domain"
+
+        return True, ""
+    except Exception:
+        return False, "Outside ESOL domain"
 
 
 
