@@ -89,7 +89,7 @@ jobs:
             // Wait until [data-testid="stAppViewContainer"] is visible (on main page or inside iframe)
             console.log('Waiting for [data-testid="stAppViewContainer"] to become visible...');
             let containerVisible = false;
-            const deadline = Date.now() + 120000;
+            const deadline = Date.now() + 240000; // Timeout increased to 4 minutes
 
             while (Date.now() < deadline && !containerVisible) {
               if (await page.locator('[data-testid="stAppViewContainer"]').first().isVisible().catch(() => false)) {
@@ -110,6 +110,8 @@ jobs:
             }
 
             if (!containerVisible) {
+              console.log('Taking screenshot of failure state...');
+              await page.screenshot({ path: 'playwright-failure.png', fullPage: true });
               throw new Error('Timed out waiting for [data-testid="stAppViewContainer"] to become visible.');
             }
 
@@ -121,3 +123,10 @@ jobs:
             await browser.close();
           })();
           EOF
+
+      - name: Upload Screenshot on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-screenshot
+          path: playwright-failure.png
