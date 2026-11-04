@@ -86,21 +86,21 @@ jobs:
               await page.waitForTimeout(10000);
             }
 
-            // Wait until [data-testid="stAppViewContainer"] is visible (on main page or inside iframe)
-            console.log('Waiting for [data-testid="stAppViewContainer"] to become visible...');
+            // Wait until [data-testid="stMain"] is visible (on main page or inside iframe)
+            console.log('Waiting for [data-testid="stMain"] to become visible...');
             let containerVisible = false;
             const deadline = Date.now() + 240000; // Timeout increased to 4 minutes
 
             while (Date.now() < deadline && !containerVisible) {
-              if (await page.locator('[data-testid="stAppViewContainer"]').first().isVisible().catch(() => false)) {
+              if (await page.locator('[data-testid="stMain"]').first().isVisible().catch(() => false)) {
                 containerVisible = true;
                 console.log('Verified [data-testid="stAppViewContainer"] is visible on main page.');
                 break;
               }
               for (const frame of page.frames()) {
-                if (await frame.locator('[data-testid="stAppViewContainer"]').first().isVisible().catch(() => false)) {
+                if (await frame.locator('[data-testid="stMain"]').first().isVisible().catch(() => false)) {
                   containerVisible = true;
-                  console.log(`Verified [data-testid="stAppViewContainer"] is visible inside iframe: ${frame.url()}`);
+                  console.log(`Verified [data-testid="stMain"] is visible inside iframe: ${frame.url()}`);
                   break;
                 }
               }
@@ -112,7 +112,7 @@ jobs:
             if (!containerVisible) {
               console.log('Taking screenshot of failure state...');
               await page.screenshot({ path: 'playwright-failure.png', fullPage: true });
-              throw new Error('Timed out waiting for [data-testid="stAppViewContainer"] to become visible.');
+              throw new Error('Timed out waiting for [data-testid="stMain"] to become visible.');
             }
 
             // Keep session open for ~15 seconds so Streamlit Community Cloud registers an active viewer session
