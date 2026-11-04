@@ -2,28 +2,27 @@ name: Keep Battery Map App Alive
 
 on:
   schedule:
-    # Run every 6 hours to prevent Streamlit Community Cloud hibernation
     - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
   wake-up-streamlit:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
 
     steps:
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
 
-      - name: Install Playwright and Headless Chromium
+      - name: Install Playwright
         run: |
           npm init -y
           npm install --no-save playwright
           npx playwright install --with-deps chromium
 
-      - name: Visit Streamlit App & Maintain Active WebSocket Session
+      - name: Ping or Wake Streamlit App
         env:
           STREAMLIT_APP_URL: https://zinc-ion-battery-map-bvpghpfevrln9egmrecfgr.streamlit.app
         run: |
@@ -31,94 +30,58 @@ jobs:
           const { chromium } = require('playwright');
 
           (async () => {
-            const url = process.env.STREAMLIT_APP_URL || 'https://zinc-ion-battery-map-bvpghpfevrln9egmrecfgr.streamlit.app';
-            console.log(`Launching headless Chromium for Streamlit keep-alive: ${url}`);
+            const url = process.env.STREAMLIT_APP_URL;
+            console.log(`Checking status of: ${url}`);
 
-            const browser = await chromium.launch({ headless: true });
-            const context = await browser.newContext({
-              viewport: { width: 1280, height: 800 },
-              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+            // Stage 1: Lightweight HTTP check
+            try {
+              const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+              const body = await res.text();
+
+              // If the app is awake, the HTML won't contain the hibernation sleep banner
+              const isSleeping = body.includes("This app has gone to sleep") || body.includes("Yes, get this app back up!");
+
+              if (!isSleeping && res.ok) {
+                console.log("App is already awake and healthy. Lightweight ping succeeded. No browser needed!");
+                process.exit(0);
+              }
+              console.log("App appears to be sleeping. Launching browser to wake it...");
+            } catch (err) {
+              console.log(`Lightweight check failed (${err.message}). Proceeding with headless browser...`);
+            }
+
+            // Stage 2: Only launch Chromium if the app is actually sleeping
+            const browser = await chromium.launch({
+              headless: true,
+              args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
             });
+
+            const context = await browser.newContext({
+              viewport: { width: 1280, height: 720 },
+              userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            });
+
             const page = await context.newPage();
 
-            page.on('websocket', ws => {
-              console.log(`WebSocket connection established: ${ws.url()}`);
-            });
+            // Block images, fonts, and heavy map assets to keep RAM usage minimal
+            await page.route('**/*.{png,jpg,jpeg,svg,woff,woff2,webp}', route => route.abort());
 
-            console.log('Navigating to Streamlit app and waiting for network/WebSocket initialization...');
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
-            await page.waitForTimeout(5000);
+            console.log('Navigating to wake sleeping app...');
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-            // Check if the Streamlit hibernation wakeup button ("Yes, get this app back up!")
-            // is present on the main page or inside any iframe; if so, click it automatically.
-            const wakeText = 'Yes, get this app back up!';
-            let clickedWake = false;
-
-            const tryClickWakeButton = async (frameOrPage, label) => {
-              const btnLocator = frameOrPage.locator(`button:has-text("${wakeText}")`).first();
-              if (await btnLocator.isVisible({ timeout: 3000 }).catch(() => false)) {
-                console.log(`Detected hibernation button ("${wakeText}") in ${label}. Clicking to wake app...`);
-                await btnLocator.click();
-                return true;
-              }
-              const roleLocator = frameOrPage.getByRole('button', { name: /Yes, get this app back up!/i }).first();
-              if (await roleLocator.isVisible({ timeout: 2000 }).catch(() => false)) {
-                console.log(`Detected hibernation button via role in ${label}. Clicking to wake app...`);
-                await roleLocator.click();
-                return true;
-              }
-              return false;
-            };
-
-            if (await tryClickWakeButton(page, 'main page')) {
-              clickedWake = true;
-            } else {
-              for (const frame of page.frames()) {
-                if (frame !== page.mainFrame() && await tryClickWakeButton(frame, `iframe (${frame.url()})`)) {
-                  clickedWake = true;
-                  break;
-                }
-              }
-            }
-
-            if (clickedWake) {
-              console.log('Wake-up triggered. Waiting for Streamlit container to boot...');
+            // Click the wake button
+            const wakeBtn = page.getByRole('button', { name: /Yes, get this app back up!/i });
+            try {
+              await wakeBtn.waitFor({ state: 'visible', timeout: 15000 });
+              console.log('Detected wake button. Clicking...');
+              await wakeBtn.click();
+              console.log('Wake button clicked successfully.');
               await page.waitForTimeout(10000);
+            } catch {
+              console.log('No wake button appeared or app was already initializing.');
             }
 
-            // Check for legacy and new Streamlit container selectors
-            const containerSelector = '[data-testid="stAppViewContainer"], [data-testid="stApp"], .stApp';
-            console.log('Waiting for Streamlit container to become visible...');
-            let containerVisible = false;
-            const deadline = Date.now() + 120000;
-
-            while (Date.now() < deadline && !containerVisible) {
-              if (await page.locator(containerSelector).first().isVisible().catch(() => false)) {
-                containerVisible = true;
-                console.log('Verified Streamlit container is visible on main page.');
-                break;
-              }
-              for (const frame of page.frames()) {
-                if (await frame.locator(containerSelector).first().isVisible().catch(() => false)) {
-                  containerVisible = true;
-                  console.log(`Verified Streamlit container is visible inside iframe: ${frame.url()}`);
-                  break;
-                }
-              }
-              if (!containerVisible) {
-                await page.waitForTimeout(2000);
-              }
-            }
-
-            if (!containerVisible) {
-              throw new Error('Timed out waiting for Streamlit container to become visible.');
-            }
-
-            // Keep session open for ~15 seconds so Streamlit Community Cloud registers an active viewer session
-            console.log('Keeping browser session open for 15 seconds to maintain /_stcore/stream WebSocket...');
-            await page.waitForTimeout(15000);
-
-            console.log('Streamlit keep-alive completed successfully.');
             await browser.close();
+            console.log('Done.');
           })();
           EOF
